@@ -7,7 +7,7 @@
  *   {"t":"err","code":"...","message":"..."}
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { createClient } from "@supabase/supabase-js";
+import { signedIn } from "@/lib/auth/server";
 
 const MODEL = process.env.SF_AI_MODEL || "claude-opus-5-5";
 /** The artifact's model tiers map to effort on one model. */
@@ -19,16 +19,6 @@ const fail = (status: number, code: string, message: string) => Response.json({ 
 
 let anthropic: Anthropic | null = null;
 const client = () => (anthropic ??= new Anthropic());
-
-async function signedIn(req: Request) {
-  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!token || !url || !key) return false;
-  const sb = createClient(url, key, { auth: { persistSession: false } });
-  const { data, error } = await sb.auth.getUser(token);
-  return !error && !!data.user;
-}
 
 function toMessages(input: unknown): Anthropic.Beta.BetaMessageParam[] | null {
   if (typeof input === "string" && input.trim()) return [{ role: "user", content: input }];

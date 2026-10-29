@@ -49,5 +49,5 @@ We move it in stages so the app keeps working at every step.
 ## Phase 5: billing, data, deploy
 
 - Stripe for seats (Trial, Public $90, Private $45, Full $135).
-- Optionally a real market-data provider behind the existing `Provider` layer.
+- Wire the provider clients in `src/lib/providers/` (added) into the existing `Provider` layer, replacing simulated data page by page.
 - Deploy to Vercel; Supabase migrations from CI.
