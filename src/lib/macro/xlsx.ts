@@ -35,8 +35,12 @@ const colIdx = (ref: string) => { let n = 0; for (const ch of ref.replace(/\d+$/
 
 /** Reads the named worksheet (or the first one) as rows of strings/numbers; missing cells are "". */
 export function readXlsx(buf: Buffer, sheetName?: string): (string | number)[][] {
-  const z = unzip(buf); const txt = (n: string) => z.get(n)?.toString("utf8") ?? "";
-  const shared = [...txt("xl/sharedStrings.xml").matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => unxml([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join("")));
+  const z = unzip(buf); const names = new Map([...z.keys()].map((k) => [k.toLowerCase(), k]));
+  const txt = (n: string) => z.get(names.get(n.replace(/^\//, "").toLowerCase()) ?? n)?.toString("utf8") ?? ""; // part names are case-insensitive
+  // Shared strings: the part named in the workbook relationships (usually xl/sharedStrings.xml). Phonetic runs (<rPh>) are not text.
+  const ssTarget = txt("xl/_rels/workbook.xml.rels").match(/<Relationship\b[^>]*sharedStrings"[^>]*>/)?.[0].match(/\sTarget="([^"]*)"/)?.[1];
+  const ssXml = (ssTarget ? txt(ssTarget.startsWith("/") ? ssTarget : `xl/${ssTarget}`) : "") || txt("xl/sharedStrings.xml");
+  const shared = [...ssXml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map((m) => unxml([...m[1].replace(/<rPh\b[\s\S]*?<\/rPh>/g, "").matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join("")));
   // workbook.xml lists sheets by name with a relationship id; workbook.xml.rels maps that to a file.
   const attr = (tagText: string, name: string) => tagText.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1] ?? "";
   const sheets = [...txt("xl/workbook.xml").matchAll(/<sheet\b[^>]*>/g)].map((m) => ({ name: unxml(attr(m[0], "name")), rid: attr(m[0], "r:id") }));

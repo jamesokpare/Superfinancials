@@ -4,7 +4,7 @@
 // re-runs and dry runs.
 // Run: npm test
 import { runMacroSync, GEN } from "../src/lib/macro/sync";
-import { parseCsv, periodEnd, parseIcs } from "../src/lib/macro/sources";
+import { parseCsv, parsePinkSheet, periodEnd, parseIcs } from "../src/lib/macro/sources";
 import { readXlsx, writeXlsx } from "../src/lib/macro/xlsx";
 import { memoryStore } from "../src/lib/market/store";
 
@@ -211,6 +211,10 @@ t("SEC 403: stops at once with a clear error", /403/.test(s403.sources["sec-form
 sec403 = false;
 const xs = readXlsx(PINK_XLSX, "monthly prices");
 t("XLSX reader: shared strings, numbers, gaps, sheet by name", xs[6][6] === "Zinc" && xs[7][0] === "2019M01" && xs[7][4] === 1854 && xs[3].length === 0, xs[6]);
+const byName = parsePinkSheet(readXlsx(writeXlsx({ "Monthly Prices": [["Title"], [], ["", "Crude oil, Brent", "Natural gas, Europe", "Liquefied natural gas, Japan", "Iron ore, cfr spot", "Palm oil"], ["", "($/bbl)", "($/mmbtu)", "($/mmbtu)", "($/dmtu)", "($/mt)"], [46266, 67.1, 11.0, 12.5, 104.2, 1010]] }), "Monthly Prices"));
+t("Pink Sheet without a code row: columns found by commodity name; Excel date serials", JSON.stringify(byName.get("NGAS_EUR")) === '[{"t":"2026-09-30","v":11}]' && byName.has("NGAS_JP") && byName.has("IRON_ORE") && byName.has("PALM_OIL"), [...byName]);
+let msg = ""; try { parsePinkSheet([["Commodity price data"], ["something else", 1, 2]]); } catch (e) { msg = (e as Error).message; }
+t("Pink Sheet with an unknown layout: the error shows the first rows", /First rows: Commodity price data \/\/ something else \| 1 \| 2/.test(msg), msg);
 fmpPremium = true;
 const fb = await runMacroSync({ store: memoryStore(), now: NOW, only: ["econ-calendar", "ipos", "dividends"] });
 t("FMP plan error → EODHD answers the economic and IPO calendars", fb.sources["econ-calendar"].events === 1 && fb.sources.ipos.events === 1 && fb.sources.dividends.events === 2, fb.sources);
