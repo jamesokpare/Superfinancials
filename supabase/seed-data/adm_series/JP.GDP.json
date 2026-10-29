@@ -1,0 +1,29 @@
+{
+  "arr": [
+    "d",
+    "v"
+  ],
+  "cat": "gr",
+  "cc": "JP",
+  "code": "GDP",
+  "d": [
+    "2026-03-31",
+    "2026-06-30"
+  ],
+  "freq": "Q",
+  "gen": "seed1",
+  "kind": "eco",
+  "mi": "GDP",
+  "n": 2,
+  "name": "Real GDP growth",
+  "notes": "Latest and previous official readings as published; collected by the data desk.",
+  "parts": 1,
+  "src": "Trading Economics (official releases)",
+  "unit": "% y/y",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/country-list/gdp-annual-growth-rate",
+  "v": [
+    0.5,
+    0.7
+  ]
+}

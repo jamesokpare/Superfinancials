@@ -1,0 +1,21 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "US",
+  "cons": "",
+  "date": "2026-11-06",
+  "ids": [
+    "YD.US2",
+    "IX.SPX",
+    "FX.DXY"
+  ],
+  "imp": 3,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "13:30",
+  "title": "Nonfarm payrolls (Oct)",
+  "unit": "",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

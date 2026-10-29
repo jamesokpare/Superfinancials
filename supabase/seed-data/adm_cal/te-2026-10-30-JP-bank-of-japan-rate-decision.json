@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "cb",
+  "cc": "JP",
+  "cons": "",
+  "date": "2026-10-30",
+  "ids": [
+    "FX.USDJPY",
+    "YD.JP10"
+  ],
+  "imp": 3,
+  "notes": "",
+  "prior": "1.25",
+  "srcName": "Trading Economics calendar",
+  "time": "03:00",
+  "title": "Bank of Japan rate decision",
+  "unit": "%",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

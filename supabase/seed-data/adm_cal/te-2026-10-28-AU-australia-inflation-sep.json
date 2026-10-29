@@ -1,0 +1,17 @@
+{
+  "actual": "4.3",
+  "cat": "eco",
+  "cc": "AU",
+  "cons": "4.2",
+  "date": "2026-10-28",
+  "ids": [],
+  "imp": 2,
+  "notes": "Q3 trimmed mean 3.7% y/y (ABS via Trading Economics).",
+  "prior": "4.0",
+  "srcName": "Trading Economics calendar",
+  "time": "00:30",
+  "title": "Inflation rate y/y (Sep)",
+  "unit": "% y/y",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

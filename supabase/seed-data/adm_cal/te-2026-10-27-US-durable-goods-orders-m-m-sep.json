@@ -1,0 +1,19 @@
+{
+  "actual": "1.8",
+  "cat": "eco",
+  "cc": "US",
+  "cons": "1.5",
+  "date": "2026-10-27",
+  "ids": [
+    "IX.SPX"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "0.1",
+  "srcName": "Trading Economics calendar",
+  "time": "12:30",
+  "title": "Durable Goods Orders m/m (Sep)",
+  "unit": "%",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

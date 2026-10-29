@@ -1,0 +1,6 @@
+{
+  "checked": "2026-10-28T22:45:00Z",
+  "n": 157,
+  "note": "EOD run 2026-10-28: 119 values written to d-2026-10-28 (157 total there) — indices (yh, US closes confirmed by dated AP wrap), commodities (TE dated rows; TE values replaced the morning's TradingView ag values), CPO (tvA, dated 10-27), majors/exotic FX (tvFX/tvFXx), 7 TE dated EM FX, BTC/ETH, CA/UK/DE/FR curves and 10Y majors (tvB/tvBm, US10Y checked vs TE 5.02% on 10-28), NG10/KE10, HY/IG OAS (FRED 10-27), 11 chartrow ETFs (EOD 10-27), NGX ASI, USD/NGN official 1357 (10-27), JALSH. H.15 Treasuries 10-20..10-26 and FRED OAS 10-23/10-26 written to new day docs. 43 NGX stocks in adm_inst (12 new). Skipped: stockanalysis.com (stale: AAPL page shows 27 Oct intraday, NVDA page shows May 2025, list prices inconsistent) so no EQ.* or stockanalysis ETFs updated; TradingView NG large-cap pages in./www./de. (stale: FIRSTHOLDCO/UBA did not match Nairametrics); FIDELITYBK (TradingView 0% vs Nairametrics -3.18%); SOFR (FRED table truncated); Egypt/Ghana 10Y, NG T-bills, NDX (no dated source).",
+  "type": "meta"
+}

@@ -1,0 +1,29 @@
+{
+  "arr": [
+    "d",
+    "c"
+  ],
+  "c": [
+    10.75
+  ],
+  "d": [
+    "2026-10-28"
+  ],
+  "gen": "desk",
+  "id": "AD.NG.MANSARD",
+  "kind": "inst",
+  "meta": {
+    "ccy": "NGN",
+    "country": "NG",
+    "exch": "NGX",
+    "name": "AXA Mansard Insurance PLC",
+    "sector": "Finance",
+    "tk": "MANSARD",
+    "type": "equity"
+  },
+  "n": 1,
+  "new": true,
+  "parts": 1,
+  "src": "NGX close via TradingView (checked against Nairametrics)",
+  "upd": "2026-10-28T22:29:37Z"
+}

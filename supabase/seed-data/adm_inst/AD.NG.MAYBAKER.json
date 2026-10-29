@@ -1,0 +1,29 @@
+{
+  "arr": [
+    "d",
+    "c"
+  ],
+  "c": [
+    39.75
+  ],
+  "d": [
+    "2026-10-28"
+  ],
+  "gen": "desk",
+  "id": "AD.NG.MAYBAKER",
+  "kind": "inst",
+  "meta": {
+    "ccy": "NGN",
+    "country": "NG",
+    "exch": "NGX",
+    "name": "May & Baker Nigeria Plc",
+    "sector": "Health technology",
+    "tk": "MAYBAKER",
+    "type": "equity"
+  },
+  "n": 1,
+  "new": true,
+  "parts": 1,
+  "src": "NGX close via TradingView (checked against Nairametrics)",
+  "upd": "2026-10-28T22:29:37Z"
+}

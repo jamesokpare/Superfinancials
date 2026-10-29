@@ -1,0 +1,31 @@
+{
+  "arr": [
+    "d",
+    "c"
+  ],
+  "c": [
+    22,
+    22
+  ],
+  "d": [
+    "2026-10-26",
+    "2026-10-27"
+  ],
+  "gen": "seed1",
+  "id": "AD.NG.FIDELITYBK",
+  "kind": "inst",
+  "meta": {
+    "ccy": "NGN",
+    "country": "NG",
+    "exch": "NGX",
+    "name": "Fidelity Bank PLC",
+    "sector": "Finance",
+    "tk": "FIDELITYBK",
+    "type": "equity"
+  },
+  "n": 2,
+  "new": true,
+  "parts": 1,
+  "src": "NGX close via TradingView (checked against Nairametrics daily report)",
+  "upd": "2026-10-28T11:45:00Z"
+}

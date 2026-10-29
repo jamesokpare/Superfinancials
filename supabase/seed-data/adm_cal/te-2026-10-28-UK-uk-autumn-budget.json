@@ -1,0 +1,21 @@
+{
+  "actual": "",
+  "cat": "pol",
+  "cc": "UK",
+  "cons": "",
+  "date": "2026-10-28",
+  "ids": [
+    "YD.UK10",
+    "FX.GBPUSD",
+    "IX.UKX"
+  ],
+  "imp": 3,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "12:30",
+  "title": "UK Autumn Budget",
+  "unit": "",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

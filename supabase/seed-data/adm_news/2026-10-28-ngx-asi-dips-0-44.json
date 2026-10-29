@@ -1,0 +1,19 @@
+{
+  "cat": "Markets",
+  "cc": [
+    "NG"
+  ],
+  "date": "2026-10-28",
+  "hasBody": false,
+  "ids": [
+    "IX.NGSEINDX",
+    "AD.NG.FIRSTHOLDCO",
+    "AD.NG.UBA"
+  ],
+  "imp": 2,
+  "srcName": "Nairametrics",
+  "sum": "The ASI fell 1,107.28 points (0.44%) to 252,882.78 and market capitalisation dropped to N164.19 trillion. First Holdco fell 10% to N139.50 while UBA rose 6.83% to N43.00 (Nairametrics).",
+  "title": "NGX All-Share Index slips 0.44% from record, market sheds N718.95bn",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://nairametrics.com/2026/10/28/ngx-stocks-shed-n718-95-billion-in-midweek-bearish-run-as-asi-dips-1107-points/"
+}

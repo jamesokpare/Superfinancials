@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "cb",
+  "cc": "EU",
+  "cons": "",
+  "date": "2026-10-29",
+  "ids": [
+    "FX.EURUSD",
+    "YD.DE2"
+  ],
+  "imp": 3,
+  "notes": "",
+  "prior": "2.65",
+  "srcName": "Trading Economics calendar",
+  "time": "13:15",
+  "title": "ECB interest rate decision",
+  "unit": "%",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

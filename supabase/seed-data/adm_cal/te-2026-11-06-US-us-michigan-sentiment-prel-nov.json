@@ -1,0 +1,19 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "US",
+  "cons": "",
+  "date": "2026-11-06",
+  "ids": [
+    "IX.SPX"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "15:00",
+  "title": "Michigan consumer sentiment prelim (Nov)",
+  "unit": "index",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

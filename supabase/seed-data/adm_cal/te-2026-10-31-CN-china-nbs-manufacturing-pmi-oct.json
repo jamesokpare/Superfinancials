@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "CN",
+  "cons": "",
+  "date": "2026-10-31",
+  "ids": [
+    "IX.SHCOMP",
+    "CM.HG1"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "01:30",
+  "title": "China NBS manufacturing PMI (Oct)",
+  "unit": "",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

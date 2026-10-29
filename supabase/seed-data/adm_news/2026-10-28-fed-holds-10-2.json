@@ -1,0 +1,19 @@
+{
+  "cat": "Policy",
+  "cc": [
+    "US"
+  ],
+  "date": "2026-10-28",
+  "hasBody": false,
+  "ids": [
+    "YD.US2",
+    "FX.DXY",
+    "IX.SPX"
+  ],
+  "imp": 3,
+  "srcName": "Federal Reserve",
+  "sum": "The FOMC kept the federal funds target range at 3.75%–4.00% in a 10–2 vote; Governor Lisa Cook and Cleveland Fed President Beth Hammack preferred a 25bp hike. Reuters reported the statement upgraded the economy to \"strong\" and said inflation \"remains elevated\".",
+  "title": "Fed holds at 3.75%–4.00% with two dissents for a hike",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm"
+}

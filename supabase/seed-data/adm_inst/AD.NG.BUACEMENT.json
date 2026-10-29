@@ -1,0 +1,33 @@
+{
+  "arr": [
+    "d",
+    "c"
+  ],
+  "c": [
+    296.99,
+    293.4,
+    293.4
+  ],
+  "d": [
+    "2026-10-26",
+    "2026-10-27",
+    "2026-10-28"
+  ],
+  "gen": "seed1",
+  "id": "AD.NG.BUACEMENT",
+  "kind": "inst",
+  "meta": {
+    "ccy": "NGN",
+    "country": "NG",
+    "exch": "NGX",
+    "name": "BUA Cement Plc",
+    "sector": "Non-energy minerals",
+    "tk": "BUACEMENT",
+    "type": "equity"
+  },
+  "n": 3,
+  "new": true,
+  "parts": 1,
+  "src": "NGX close via TradingView (checked against Nairametrics daily report)",
+  "upd": "2026-10-28T22:29:37Z"
+}

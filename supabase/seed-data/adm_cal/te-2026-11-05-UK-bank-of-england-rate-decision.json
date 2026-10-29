@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "cb",
+  "cc": "UK",
+  "cons": "",
+  "date": "2026-11-05",
+  "ids": [
+    "FX.GBPUSD",
+    "YD.UK2"
+  ],
+  "imp": 3,
+  "notes": "",
+  "prior": "3.75",
+  "srcName": "Trading Economics calendar",
+  "time": "12:00",
+  "title": "Bank of England rate decision",
+  "unit": "%",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

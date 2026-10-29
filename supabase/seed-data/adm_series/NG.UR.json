@@ -1,0 +1,27 @@
+{
+  "arr": [
+    "d",
+    "v"
+  ],
+  "cat": "lb",
+  "cc": "NG",
+  "code": "UR",
+  "d": [
+    "2024-12-31"
+  ],
+  "freq": "Q",
+  "gen": "seed1",
+  "kind": "eco",
+  "mi": "UR",
+  "n": 1,
+  "name": "Unemployment rate",
+  "notes": "Latest reading; reference period as published.",
+  "parts": 1,
+  "src": "Trading Economics (official releases)",
+  "unit": "%",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/country-list/unemployment-rate",
+  "v": [
+    4.9
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "arr": [
+    "d",
+    "c"
+  ],
+  "c": [
+    511.5
+  ],
+  "d": [
+    "2026-10-28"
+  ],
+  "gen": "desk",
+  "id": "AD.NG.BETAGLAS",
+  "kind": "inst",
+  "meta": {
+    "ccy": "NGN",
+    "country": "NG",
+    "exch": "NGX",
+    "name": "Beta Glass Plc.",
+    "sector": "Process industries",
+    "tk": "BETAGLAS",
+    "type": "equity"
+  },
+  "n": 1,
+  "new": true,
+  "parts": 1,
+  "src": "NGX close via TradingView (checked against Nairametrics)",
+  "upd": "2026-10-28T22:29:37Z"
+}

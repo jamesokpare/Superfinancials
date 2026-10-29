@@ -1,0 +1,15 @@
+{
+  "cat": "Economy",
+  "cc": [
+    "AU"
+  ],
+  "date": "2026-10-28",
+  "hasBody": false,
+  "ids": [],
+  "imp": 2,
+  "srcName": "Trading Economics (ABS)",
+  "sum": "Australia’s annual CPI rose to 4.3% in September from 4.0%, above the 4.2% consensus; Q3 trimmed mean inflation was 3.7% y/y ahead of the RBA’s 3 November decision (ABS data via Trading Economics).",
+  "title": "Australian inflation accelerates to 4.3% in September",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

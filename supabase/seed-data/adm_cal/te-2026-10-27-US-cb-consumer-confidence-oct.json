@@ -1,0 +1,19 @@
+{
+  "actual": "91.7",
+  "cat": "eco",
+  "cc": "US",
+  "cons": "81",
+  "date": "2026-10-27",
+  "ids": [
+    "IX.SPX"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "84.2",
+  "srcName": "Trading Economics calendar",
+  "time": "14:00",
+  "title": "CB Consumer Confidence (Oct)",
+  "unit": "index",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

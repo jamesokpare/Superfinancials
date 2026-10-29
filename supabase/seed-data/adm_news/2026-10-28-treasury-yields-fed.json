@@ -1,0 +1,19 @@
+{
+  "cat": "Fixed income",
+  "cc": [
+    "US"
+  ],
+  "date": "2026-10-28",
+  "hasBody": false,
+  "ids": [
+    "YD.US2",
+    "YD.US10",
+    "FX.DXY"
+  ],
+  "imp": 2,
+  "srcName": "Reuters via Yahoo Finance",
+  "sum": "Reuters reported the 2-year yield up 3.9bp at 4.776%, the 10-year up 5bp at 5.047% and the 30-year up 3.8bp at 5.338% after the Fed held, with the dollar index up 0.02%.",
+  "title": "Treasury yields rise after Fed decision; 10-year at 5.047%",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://finance.yahoo.com/economy/policy/articles/fomc-holds-rates-steady-markets-182955276.html"
+}

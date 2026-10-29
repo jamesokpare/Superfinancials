@@ -1,0 +1,18 @@
+{
+  "cat": "Policy",
+  "cc": [
+    "US"
+  ],
+  "date": "2026-10-27",
+  "hasBody": false,
+  "ids": [
+    "YD.US2",
+    "FX.DXY"
+  ],
+  "imp": 3,
+  "srcName": "Kiplinger",
+  "sum": "CME FedWatch showed a 92.8% probability of a hold at the 27–28 October meeting, while markets priced a 75.1% chance of a 25bp hike after December (Kiplinger, 27 Oct).",
+  "title": "Fed expected to hold at 3.75%–4.00% on 28 October",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://kiplinger.com/investing/live/fed-meeting-updates-and-commentary-october-2026"
+}

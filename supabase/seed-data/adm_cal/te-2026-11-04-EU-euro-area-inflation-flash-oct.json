@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "EU",
+  "cons": "",
+  "date": "2026-11-04",
+  "ids": [
+    "FX.EURUSD",
+    "YD.DE2"
+  ],
+  "imp": 3,
+  "notes": "",
+  "prior": "3.8",
+  "srcName": "Trading Economics calendar",
+  "time": "10:00",
+  "title": "Euro area inflation flash (Oct)",
+  "unit": "% y/y",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

@@ -1,0 +1,19 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "ID",
+  "cons": "",
+  "date": "2026-11-02",
+  "ids": [
+    "FX.USDIDR"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "3.28",
+  "srcName": "Trading Economics calendar",
+  "time": "04:00",
+  "title": "Indonesia inflation (Oct)",
+  "unit": "% y/y",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

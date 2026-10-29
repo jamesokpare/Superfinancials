@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "US",
+  "cons": "",
+  "date": "2026-10-29",
+  "ids": [
+    "YD.US2",
+    "FX.DXY"
+  ],
+  "imp": 3,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "12:30",
+  "title": "PCE & core PCE prices (Sep)",
+  "unit": "",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

@@ -1,0 +1,19 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "US",
+  "cons": "",
+  "date": "2026-11-04",
+  "ids": [
+    "IX.SPX"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "14:00",
+  "title": "ISM services PMI (Oct)",
+  "unit": "index",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

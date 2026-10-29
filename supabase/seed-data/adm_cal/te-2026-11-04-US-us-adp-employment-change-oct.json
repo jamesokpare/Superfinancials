@@ -1,0 +1,19 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "US",
+  "cons": "",
+  "date": "2026-11-04",
+  "ids": [
+    "IX.SPX"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "13:15",
+  "title": "ADP employment change (Oct)",
+  "unit": "k",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

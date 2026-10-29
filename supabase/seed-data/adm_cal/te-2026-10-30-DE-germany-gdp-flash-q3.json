@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "DE",
+  "cons": "",
+  "date": "2026-10-30",
+  "ids": [
+    "IX.DAX",
+    "YD.DE10"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "1.0",
+  "srcName": "Trading Economics calendar",
+  "time": "09:00",
+  "title": "GDP growth y/y flash (Q3)",
+  "unit": "% y/y",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

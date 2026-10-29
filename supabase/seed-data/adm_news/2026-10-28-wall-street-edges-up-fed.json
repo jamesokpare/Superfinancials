@@ -1,0 +1,19 @@
+{
+  "cat": "Markets",
+  "cc": [
+    "US"
+  ],
+  "date": "2026-10-28",
+  "hasBody": false,
+  "ids": [
+    "IX.INDU",
+    "IX.SPX",
+    "IX.CCMP"
+  ],
+  "imp": 2,
+  "srcName": "Yahoo Finance",
+  "sum": "The Dow rose 97.53 points (0.19%) to 52,475.10, the S&P 500 gained 0.28% to 7,743.98 and the Nasdaq added 0.27% to 26,549.85 on 28 October (Yahoo Finance).",
+  "title": "Wall Street edges higher after Fed hold",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://finance.yahoo.com/markets/live/stock-market-today-wednesday-october-28-dow-sp-500-nasdaq-fed-meeting-decision-big-tech-earnings-130508769.html"
+}

@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "EU",
+  "cons": "",
+  "date": "2026-11-02",
+  "ids": [
+    "IX.SX5E",
+    "FX.EURUSD"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "09:00",
+  "title": "S&P Global manufacturing PMI final (Oct)",
+  "unit": "index",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

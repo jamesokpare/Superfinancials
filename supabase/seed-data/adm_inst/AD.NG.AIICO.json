@@ -1,0 +1,33 @@
+{
+  "arr": [
+    "d",
+    "c"
+  ],
+  "c": [
+    3.8,
+    3.83,
+    3.74
+  ],
+  "d": [
+    "2026-10-26",
+    "2026-10-27",
+    "2026-10-28"
+  ],
+  "gen": "seed1",
+  "id": "AD.NG.AIICO",
+  "kind": "inst",
+  "meta": {
+    "ccy": "NGN",
+    "country": "NG",
+    "exch": "NGX",
+    "name": "Aiico Insurance PLC",
+    "sector": "Finance",
+    "tk": "AIICO",
+    "type": "equity"
+  },
+  "n": 3,
+  "new": true,
+  "parts": 1,
+  "src": "NGX close via TradingView (checked against Nairametrics daily report)",
+  "upd": "2026-10-28T22:29:37Z"
+}

@@ -1,0 +1,28 @@
+{
+  "asset": "Export terminal",
+  "attrib": "Yemen's Houthis claimed a ballistic-missile strike on the Ras Tanura refinery (as reported); Saudi authorities report only intercepting 3 missiles aimed at the Eastern Province and have not confirmed a hit",
+  "conf": "multi",
+  "country": "Saudi Arabia",
+  "date": "2026-10-27",
+  "lat": 26.64,
+  "lon": 50.16,
+  "name": "Ras Tanura refinery & export terminal",
+  "src": [
+    {
+      "t": "Bloomberg (via MarketScreener)",
+      "url": "https://www.marketscreener.com/news/saudi-arabia-contains-fire-near-ras-tanura-oil-export-terminal-after-attack-bloomberg-news-reports-ce785cddd880f027"
+    },
+    {
+      "t": "Gulf News",
+      "url": "https://gulfnews.com/world/gulf/saudi/tehran-talks-falter-as-houthis-escalate-attacks-on-saudi-arabia-turkey-advances-defence-pact-2-1.500725947"
+    },
+    {
+      "t": "OilPrice.com",
+      "url": "https://oilprice.com/Latest-Energy-News/World-News/Oil-Prices-Climb-as-Houthi-Attacks-Reignite-Saudi-Supply-Fears.amp.html"
+    }
+  ],
+  "star": 0,
+  "status": "Fire near the hub reported contained; extent of damage and any disruption to refining or exports unclear",
+  "summary": "On 27 Oct a fire near Aramco's Ras Tanura hub was reported contained after an attack, per Bloomberg and maritime security firm Vanguard (cited by Gulf News). The Houthi claim of a direct hit causing 'massive fires' is unverified; Saudi statements mention only interceptions.",
+  "type": "incident"
+}

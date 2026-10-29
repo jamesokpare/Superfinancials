@@ -1,0 +1,21 @@
+{
+  "actual": "3.75–4.00",
+  "cat": "cb",
+  "cc": "US",
+  "cons": "Hold (CME FedWatch 92.8% on 27 Oct)",
+  "date": "2026-10-28",
+  "ids": [
+    "YD.US2",
+    "FX.DXY",
+    "IX.SPX"
+  ],
+  "imp": 3,
+  "notes": "Held at 3.75%–4.00% in a 10–2 vote; Cook and Hammack dissented in favour of a 25bp hike (Federal Reserve statement, 28 Oct).",
+  "prior": "3.75–4.00",
+  "srcName": "Federal Reserve",
+  "time": "18:00",
+  "title": "Fed interest rate decision (FOMC)",
+  "unit": "%",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm"
+}

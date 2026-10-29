@@ -1,0 +1,33 @@
+{
+  "arr": [
+    "d",
+    "c"
+  ],
+  "c": [
+    1276.2,
+    1276.2,
+    1276.2
+  ],
+  "d": [
+    "2026-10-26",
+    "2026-10-27",
+    "2026-10-28"
+  ],
+  "gen": "seed1",
+  "id": "AD.NG.OKOMUOIL",
+  "kind": "inst",
+  "meta": {
+    "ccy": "NGN",
+    "country": "NG",
+    "exch": "NGX",
+    "name": "Okomu Oil Palm Co. Plc",
+    "sector": "Process industries",
+    "tk": "OKOMUOIL",
+    "type": "equity"
+  },
+  "n": 3,
+  "new": true,
+  "parts": 1,
+  "src": "NGX close via TradingView (checked against Nairametrics daily report)",
+  "upd": "2026-10-28T22:29:37Z"
+}

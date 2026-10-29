@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "JP",
+  "cons": "",
+  "date": "2026-10-29",
+  "ids": [
+    "FX.USDJPY",
+    "YD.JP10"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "23:30",
+  "title": "Tokyo CPI y/y (Oct)",
+  "unit": "% y/y",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

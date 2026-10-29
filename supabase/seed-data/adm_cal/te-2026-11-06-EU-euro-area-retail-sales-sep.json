@@ -1,0 +1,19 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "EU",
+  "cons": "",
+  "date": "2026-11-06",
+  "ids": [
+    "IX.SX5E"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "10:00",
+  "title": "Retail sales y/y (Sep)",
+  "unit": "% y/y",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

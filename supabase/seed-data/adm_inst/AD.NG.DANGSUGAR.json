@@ -1,0 +1,33 @@
+{
+  "arr": [
+    "d",
+    "c"
+  ],
+  "c": [
+    67.3,
+    67,
+    68
+  ],
+  "d": [
+    "2026-10-26",
+    "2026-10-27",
+    "2026-10-28"
+  ],
+  "gen": "seed1",
+  "id": "AD.NG.DANGSUGAR",
+  "kind": "inst",
+  "meta": {
+    "ccy": "NGN",
+    "country": "NG",
+    "exch": "NGX",
+    "name": "Dangote Sugar Refinery PLC",
+    "sector": "Process industries",
+    "tk": "DANGSUGAR",
+    "type": "equity"
+  },
+  "n": 3,
+  "new": true,
+  "parts": 1,
+  "src": "NGX close via TradingView (checked against Nairametrics daily report)",
+  "upd": "2026-10-28T22:29:37Z"
+}

@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "cb",
+  "cc": "BR",
+  "cons": "",
+  "date": "2026-11-04",
+  "ids": [
+    "FX.USDBRL",
+    "YD.BR2"
+  ],
+  "imp": 3,
+  "notes": "",
+  "prior": "13.75",
+  "srcName": "Trading Economics calendar",
+  "time": "21:30",
+  "title": "Brazil Copom rate decision",
+  "unit": "%",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

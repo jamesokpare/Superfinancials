@@ -1,0 +1,19 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "JP",
+  "cons": "",
+  "date": "2026-10-29",
+  "ids": [
+    "FX.USDJPY"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "2.5",
+  "srcName": "Trading Economics calendar",
+  "time": "23:30",
+  "title": "Unemployment rate (Sep)",
+  "unit": "%",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

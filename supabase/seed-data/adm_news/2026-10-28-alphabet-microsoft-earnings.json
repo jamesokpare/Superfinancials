@@ -1,0 +1,19 @@
+{
+  "cat": "Companies",
+  "cc": [
+    "US"
+  ],
+  "date": "2026-10-28",
+  "hasBody": false,
+  "ids": [
+    "EQ.GOOGL",
+    "EQ.MSFT",
+    "IX.CCMP"
+  ],
+  "imp": 2,
+  "srcName": "Yahoo Finance",
+  "sum": "Alphabet reported EPS of $2.12 vs a $2.99 forecast and dropped 8.66% after hours to 294.00. Microsoft posted EPS of $4.89 on $92.28bn revenue vs estimates of $4.73 and $90.63bn, rising 4.14% after hours (Yahoo Finance).",
+  "title": "Alphabet falls 8.7% after hours on EPS miss; Microsoft rises 4.1%",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://finance.yahoo.com/markets/live/stock-market-today-wednesday-october-28-dow-sp-500-nasdaq-fed-meeting-decision-big-tech-earnings-130508769.html"
+}

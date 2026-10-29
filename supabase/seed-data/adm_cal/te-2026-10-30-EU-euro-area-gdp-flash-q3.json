@@ -1,0 +1,20 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "EU",
+  "cons": "",
+  "date": "2026-10-30",
+  "ids": [
+    "FX.EURUSD",
+    "IX.SX5E"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "10:00",
+  "title": "Euro area GDP flash (Q3)",
+  "unit": "",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

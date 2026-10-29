@@ -1,0 +1,19 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "FR",
+  "cons": "",
+  "date": "2026-10-30",
+  "ids": [
+    "IX.CAC"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "3.1",
+  "srcName": "Trading Economics calendar",
+  "time": "07:45",
+  "title": "Inflation rate y/y prelim (Oct)",
+  "unit": "% y/y",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

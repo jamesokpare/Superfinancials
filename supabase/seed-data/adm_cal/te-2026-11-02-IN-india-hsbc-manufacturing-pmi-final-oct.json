@@ -1,0 +1,19 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "IN",
+  "cons": "",
+  "date": "2026-11-02",
+  "ids": [
+    "IX.NIFTY"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "05:00",
+  "title": "HSBC manufacturing PMI final (Oct)",
+  "unit": "index",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

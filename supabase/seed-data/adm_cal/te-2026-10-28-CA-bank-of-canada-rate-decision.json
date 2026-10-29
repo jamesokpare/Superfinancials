@@ -1,0 +1,20 @@
+{
+  "actual": "2.5",
+  "cat": "cb",
+  "cc": "CA",
+  "cons": "2.5",
+  "date": "2026-10-28",
+  "ids": [
+    "FX.USDCAD",
+    "YD.CA2"
+  ],
+  "imp": 3,
+  "notes": "Hiked 25bp to 2.5%, first increase since July 2023; Macklem: \"There could be a need to increase the policy rate further\" (BNN Bloomberg, 28 Oct).",
+  "prior": "2.25",
+  "srcName": "Trading Economics calendar",
+  "time": "13:45",
+  "title": "Bank of Canada rate decision",
+  "unit": "%",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

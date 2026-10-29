@@ -1,0 +1,19 @@
+{
+  "actual": "",
+  "cat": "eco",
+  "cc": "CA",
+  "cons": "",
+  "date": "2026-11-06",
+  "ids": [
+    "FX.USDCAD"
+  ],
+  "imp": 2,
+  "notes": "",
+  "prior": "6.5",
+  "srcName": "Trading Economics calendar",
+  "time": "13:30",
+  "title": "Canada unemployment rate (Oct)",
+  "unit": "%",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

@@ -1,0 +1,29 @@
+{
+  "arr": [
+    "d",
+    "c"
+  ],
+  "c": [
+    18.05
+  ],
+  "d": [
+    "2026-10-28"
+  ],
+  "gen": "desk",
+  "id": "AD.NG.CWG",
+  "kind": "inst",
+  "meta": {
+    "ccy": "NGN",
+    "country": "NG",
+    "exch": "NGX",
+    "name": "CWG Plc",
+    "sector": "Technology services",
+    "tk": "CWG",
+    "type": "equity"
+  },
+  "n": 1,
+  "new": true,
+  "parts": 1,
+  "src": "NGX close via TradingView (checked against Nairametrics)",
+  "upd": "2026-10-28T22:29:37Z"
+}

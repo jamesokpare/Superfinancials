@@ -1,0 +1,23 @@
+{
+  "arr": [
+    "d",
+    "c"
+  ],
+  "c": [
+    1365,
+    1357
+  ],
+  "d": [
+    "2026-10-26",
+    "2026-10-27"
+  ],
+  "gen": "seed1",
+  "id": "FX.USDNGN",
+  "kind": "inst",
+  "meta": {},
+  "n": 2,
+  "new": false,
+  "parts": 1,
+  "src": "Official NFEM close (Nairametrics)",
+  "upd": "2026-10-28T10:30:00Z"
+}

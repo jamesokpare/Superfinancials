@@ -1,0 +1,19 @@
+{
+  "actual": "80",
+  "cat": "eco",
+  "cc": "FR",
+  "cons": "85",
+  "date": "2026-10-27",
+  "ids": [
+    "IX.CAC"
+  ],
+  "imp": 1,
+  "notes": "",
+  "prior": "85",
+  "srcName": "Trading Economics calendar",
+  "time": "07:45",
+  "title": "Consumer Confidence (Oct)",
+  "unit": "index",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

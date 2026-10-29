@@ -1,0 +1,29 @@
+{
+  "arr": [
+    "d",
+    "v"
+  ],
+  "cat": "in",
+  "cc": "MA",
+  "code": "CPI",
+  "d": [
+    "2026-08-31",
+    "2026-09-30"
+  ],
+  "freq": "M",
+  "gen": "seed1",
+  "kind": "eco",
+  "mi": "CPI",
+  "n": 2,
+  "name": "Inflation rate",
+  "notes": "Latest and previous official readings as published; collected by the data desk.",
+  "parts": 1,
+  "src": "Trading Economics (official releases)",
+  "unit": "% y/y",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/country-list/inflation-rate",
+  "v": [
+    -0.3,
+    0.5
+  ]
+}

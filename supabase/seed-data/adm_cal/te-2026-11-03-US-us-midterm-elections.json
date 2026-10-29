@@ -1,0 +1,21 @@
+{
+  "actual": "",
+  "cat": "pol",
+  "cc": "US",
+  "cons": "",
+  "date": "2026-11-03",
+  "ids": [
+    "IX.SPX",
+    "FX.DXY",
+    "YD.US10"
+  ],
+  "imp": 3,
+  "notes": "",
+  "prior": "",
+  "srcName": "Trading Economics calendar",
+  "time": "",
+  "title": "US midterm elections",
+  "unit": "",
+  "upd": "2026-10-28T21:55:00Z",
+  "url": "https://tradingeconomics.com/calendar"
+}

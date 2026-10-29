@@ -1,0 +1,27 @@
+{
+  "arr": [
+    "d",
+    "v"
+  ],
+  "cat": "mp",
+  "cc": "GH",
+  "code": "POL",
+  "d": [
+    "2026-09-30"
+  ],
+  "freq": "M",
+  "gen": "seed1",
+  "kind": "eco",
+  "mi": "POL",
+  "n": 1,
+  "name": "Policy interest rate",
+  "notes": "Policy rate in force at the reference month; previous decisions are not dated here.",
+  "parts": 1,
+  "src": "Trading Economics (official releases)",
+  "unit": "%",
+  "upd": "2026-10-28T10:30:00Z",
+  "url": "https://tradingeconomics.com/country-list/interest-rate",
+  "v": [
+    14
+  ]
+}
