@@ -291,6 +291,17 @@ register page with the search run; a company number opens that company
 directly. Exact tickers and page codes don't trigger a lookup, and the entries
 are hidden in browser-only mode or when the server has no Companies House key.
 
+## CI and monitoring (GitHub Actions)
+
+| Workflow | When | What |
+|---|---|---|
+| **CI** (`ci.yml`) | Every push to `main` and every PR | `npm ci`, route types, lint, typecheck, tests, build. No secrets needed: tests use mocked APIs |
+| **Data dry run** (`data-dry-run.yml`) | By hand (Actions → Run workflow), or when the workflow file changes | Checks every provider key, then runs the market, news and fundamentals syncs with `--dry-run` against the real APIs using the repository secrets. Reads the database, writes nothing; budgets are kept small. Results appear in the run summary |
+| **Sync health** (`sync-health.yml`) | Daily 09:17 UTC, or by hand | Fails if a sync is stale (prices > 80 h, news > 26 h, fundamentals > 26 h) or its last run produced no data. GitHub emails the repository owner about failed scheduled runs |
+
+The dry run and health check need the `DATABASE_URL` repository secret (already
+set); the dry run also uses the provider secrets.
+
 ## Scripts
 
 | Command | What it does |
@@ -304,3 +315,4 @@ are hidden in browser-only mode or when the server has no Companies House key.
 | `npm run market:sync` | Pull end-of-day prices from the providers into the app (`-- --dry-run` to preview) |
 | `npm run news:sync` | Pull recent headlines from the news providers (`-- --dry-run` to preview) |
 | `npm run fundamentals:sync` | Refresh reported financials (`-- --dry-run`, `-- --budget=64`) |
+| `npm run sync:health` | Check that each sync ran recently and produced data (exit 1 if not) |

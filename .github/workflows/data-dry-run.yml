@@ -1,0 +1,73 @@
+# Live dry run of the data syncs against the real provider APIs, using the
+# repository secrets. Reads the database (DATABASE_URL) but writes nothing.
+# Run it from the Actions tab ("Run workflow"); it also runs when this file changes.
+# Budgets are kept small so a run spends little of the providers' daily quotas.
+name: Data dry run
+
+on:
+  workflow_dispatch:
+    inputs:
+      fundamentals_budget:
+        description: Companies to fetch fundamentals for (U.S. and NGX each)
+        default: "3"
+  pull_request:
+    paths:
+      - .github/workflows/data-dry-run.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-dry-run
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      AFRICA_API_KEY: ${{ secrets.AFRICA_API_KEY }}
+      ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+      COMPANIES_HOUSE_API_KEY: ${{ secrets.COMPANIES_HOUSE_API_KEY }}
+      CURRENTS_API_KEY: ${{ secrets.CURRENTS_API_KEY }}
+      EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+      EXCHANGERATE_API_KEY: ${{ secrets.EXCHANGERATE_API_KEY }}
+      FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+      FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      MANSA_API_KEY: ${{ secrets.MANSA_API_KEY }}
+      MARKETAUX_API_KEY: ${{ secrets.MARKETAUX_API_KEY }}
+      MARKETSTACK_API_KEY: ${{ secrets.MARKETSTACK_API_KEY }}
+      MYSTOCKS_AFRICA_API_KEY: ${{ secrets.MYSTOCKS_AFRICA_API_KEY }}
+      NEWSAPI_AI_KEY: ${{ secrets.NEWSAPI_AI_KEY }}
+      NGX_PULSE_API_KEY: ${{ secrets.NGX_PULSE_API_KEY }}
+      MARKET_HISTORY_BUDGET: "2"
+      MARKET_ALPHAVANTAGE_BUDGET: "5"
+      FUND_BUDGET: ${{ inputs.fundamentals_budget || '3' }}
+      FUND_NGX_BUDGET: ${{ inputs.fundamentals_budget || '3' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Provider keys
+        continue-on-error: true
+        run: npm run -s providers:check 2>&1 | tee providers.txt
+      - name: Market prices (dry run)
+        continue-on-error: true
+        run: set -o pipefail; npm run -s market:sync -- --dry-run 2>&1 | tee market.txt
+      - name: News (dry run)
+        continue-on-error: true
+        run: set -o pipefail; npm run -s news:sync -- --dry-run 2>&1 | tee news.txt
+      - name: Fundamentals (dry run)
+        continue-on-error: true
+        run: set -o pipefail; npm run -s fundamentals:sync -- --dry-run 2>&1 | tee fundamentals.txt
+      - name: Summary
+        if: always()
+        run: |
+          for f in providers market news fundamentals; do
+            [ -f "$f.txt" ] || continue
+            { echo "## ${f^}"; echo '```'; cat "$f.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          done
