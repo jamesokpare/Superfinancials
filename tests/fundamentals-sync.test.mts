@@ -4,8 +4,9 @@
 import { runFundamentalsSync } from "../src/lib/fundamentals/sync";
 import { memoryStore } from "../src/lib/market/store";
 import type { FundDoc } from "../src/lib/fundamentals/sources";
+import { snapshotFrom } from "../src/lib/fundamentals/africa";
 
-for (const k of ["EODHD_API_KEY", "FMP_API_KEY"]) process.env[k] = "test-" + k;
+for (const k of ["EODHD_API_KEY", "FMP_API_KEY", "MANSA_API_KEY"]) process.env[k] = "test-" + k;
 const NOW = new Date("2026-10-29T05:40:00Z");
 const calls: string[] = [];
 
@@ -43,6 +44,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   if (url.hostname === "eodhd.com") {
     if (url.pathname === "/api/fundamentals/AAPL.US") return json(EODHD_AAPL);
     if (url.pathname === "/api/fundamentals/CCJ.US") return json({ General: { Code: "CCJ" }, Financials: {} }); // no statements → falls back to FMP
+    if (url.pathname === "/api/fundamentals/DANGCEM.XNSA") return json({ ...EODHD_AAPL, General: { Code: "DANGCEM", Name: "Dangote Cement Plc", CurrencyCode: "NGN" }, SharesStats: { SharesOutstanding: 16856000000 } });
     if (url.pathname.startsWith("/api/fundamentals/")) return json({ error: "not in plan" }, 403);
     if (url.pathname === "/api/calendar/earnings") return json({ type: "Earnings", earnings: [
       { code: "AAPL.US", report_date: "2026-10-30", date: "2026-09-30", before_after_market: "AfterMarket", estimate: 1.79, actual: null },
@@ -51,6 +53,11 @@ globalThis.fetch = (async (input: string | URL | Request) => {
       { code: "MSFT.US", report_date: "2026-10-28", date: "2026-09-30", before_after_market: "AfterMarket", estimate: 3.6, actual: 3.72 },
     ] });
     return json([], 404);
+  }
+  if (url.hostname === "www.mansaapi.com") {
+    if (url.pathname === "/api/v1/markets/exchanges/nigeria/stocks/MTNN") return json({ success: true, data: { ticker: "MTNN", name: "MTN Nigeria Communications Plc", price: 455.5, market_cap: 9.27e12, pe_ratio: 18.5, dividend_yield: 0.035, currency: "NGN" } });
+    if (url.pathname === "/api/v1/markets/exchanges/nigeria/dividends/MTNN") return json({ success: true, data: [] });
+    return json({ success: false, error: { code: "NOT_FOUND", message: "no such stock" } }, 404);
   }
   if (url.hostname === "financialmodelingprep.com") {
     const s = url.searchParams.get("symbol");
@@ -110,6 +117,27 @@ const s2 = memoryStore({ fund: [
 ] });
 const r2 = await runFundamentalsSync({ store: s2, now: NOW, only: ["AAPL", "CCJ"], providers: ["eodhd"], budget: 1 });
 t("reported-since-last-fetch company refreshed first", r2.updated[0]?.tk === "AAPL" || r2.failed[0]?.tk === "AAPL", r2);
+
+// --- NGX listings (data desk instruments) ---
+const ngxStore = memoryStore({ adm_inst: [
+  { id: "AD.NG.MTNN", data: { kind: "inst", id: "AD.NG.MTNN", meta: { tk: "MTNN", exch: "NGX" }, d: [], c: [] } },
+  { id: "AD.NG.DANGCEM", data: { kind: "inst", id: "AD.NG.DANGCEM", meta: { tk: "DANGCEM", exch: "NGX" }, d: [], c: [] } },
+  { id: "AD.NG.NOPE", data: { kind: "inst", id: "AD.NG.NOPE", meta: { tk: "NOPE", exch: "NGX" }, d: [], c: [] } },
+  { id: "AD.NG.MTNN~p1", data: { of: "AD.NG.MTNN", p: 1 } },
+] });
+const rn = await runFundamentalsSync({ store: ngxStore, now: NOW, only: ["MTNN", "DANGCEM", "NOPE"], providers: ["eodhd", "mansa"] });
+const nd = Object.fromEntries(ngxStore.dump().fund.map((d) => [d.id, d.data as unknown as FundDoc]));
+t("NGX: EODHD full statements via .XNSA, in NGN", nd["AD.NG.DANGCEM"]?.src === "eodhd" && nd["AD.NG.DANGCEM"].ccy === "NGN" && nd["AD.NG.DANGCEM"].fy.length === 3 && calls.includes("eodhd.com/api/fundamentals/DANGCEM.XNSA"), nd["AD.NG.DANGCEM"]);
+const mt = nd["AD.NG.MTNN"];
+t("NGX: Mansa snapshot when EODHD has no data", mt?.src === "mansa" && mt.kind === "snapshot" && mt.fy.length === 0 && mt.ccy === "NGN", mt);
+t("NGX snapshot: shares from market cap / price, EPS from P/E, dividend from yield", Math.abs(mt.shares! - 9.27e12 / 455.5) < 1 && Math.abs(mt.ttm.eps! - 455.5 / 18.5) < 1e-9 && Math.abs(mt.ttm.divPs! - 0.035 * 455.5) < 1e-9, mt.ttm);
+t("NGX: listing with no data anywhere reported as failed; part docs ignored", rn.failed.some((f) => f.tk === "NGX:NOPE") && !nd["AD.NG.MTNN~p1"] && rn.ngxTotal === 2, rn);
+t("NGX: note counts listings", /2 of 3 NGX listings/.test(rn.note), rn.note);
+
+// snapshotFrom handles other field names and nesting
+const s1 = snapshotFrom("AD.NG.X", "X", "ngxpulse", { data: { symbol: "X", current_price: "100", outstanding_shares: "1,000,000", eps: 5, dividend_yield: 4.2, book_value: 40 } });
+t("snapshot: nested data, string numbers, yield in %", s1?.shares === 1e6 && s1.ttm.eps === 5 && Math.abs((s1.ttm.divPs ?? 0) - 4.2) < 1e-9 && s1.bs.equity === 40e6 && s1.ttm.ni === 5e6, s1);
+t("snapshot: too little data → null", snapshotFrom("AD.NG.Y", "Y", "africa", { symbol: "Y", price: 10 }) === null);
 
 // Dry run writes nothing; no providers writes nothing.
 const dry = memoryStore(); await runFundamentalsSync({ store: dry, now: NOW, only: ["AAPL"], providers: ["eodhd"], dryRun: true });

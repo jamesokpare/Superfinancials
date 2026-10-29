@@ -53,5 +53,6 @@ We move it in stages so the app keeps working at every step.
 - ✅ Provider headlines on Market news, briefs and security pages (`src/lib/news/`, `public/legacy/news-feed.js`).
 - ✅ Reported fundamentals for U.S. equities (`src/lib/fundamentals/`, `public/legacy/fundamentals.js`).
 - ✅ Reported earnings and consensus estimates (`public/legacy/earnings.js`).
-- Next for data: load history per instrument on demand instead of the whole `mkt` collection; NGX company fundamentals; UK company data (Companies House) for the pages that still say "no provider connected".
+- ✅ NGX company fundamentals (EODHD statements or African-API key figures).
+- Next for data: load history per instrument on demand instead of the whole `mkt` collection; UK company data (Companies House) for the pages that still say "no provider connected".
 - Deploy to Vercel; Supabase migrations from CI.
