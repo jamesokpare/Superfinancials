@@ -60,6 +60,8 @@ We move it in stages so the app keeps working at every step.
 - ✅ Reported fundamentals for U.S. equities and NGX listings (`src/lib/fundamentals/`).
 - ✅ Reported earnings and consensus estimates (`public/legacy/earnings.js`).
 - ✅ Company registry: UK (Companies House), global (GLEIF) and data-desk companies added in the Data studio, with main-search results.
+- ✅ Real-data mode: no fictional private companies or funds, and no simulated-only instruments, outside the demo workspace.
+- ✅ Daily macro sync (`src/lib/macro/`): World Bank, BIS, ECB, OECD series; FRED, Treasury, FMP/EODHD economic, dividend and IPO calendars; SEC Form D private placements.
 
 ## Remaining: verify what is wired
 
@@ -88,16 +90,17 @@ mocked responses.
 - **Volumes and intraday ranges.** Prices are real end-of-day closes; volumes,
   open/high/low and intraday charts are simulated. EODHD/Marketstack carry
   OHLCV and intraday bars.
-- **Economic data beyond the U.S.** The Country data / macro panels (19 countries),
-  the economic-release calendar (consensus and actuals), central-bank meetings,
-  Treasury auctions, dividends and AGMs are simulated. Candidates: FRED/OECD, the
-  Africa API (indicators, elections), EODHD macro and calendars (dividends, splits, IPOs).
+- **Economic data beyond the U.S.** Now from World Bank, BIS, ECB and OECD (annual or
+  monthly). Still missing: PMIs (proprietary), central-bank meeting dates (no API; a
+  yearly hand-entered list in the Data studio is the practical route), AGMs, and
+  consensus figures where the FMP/EODHD plan doesn't include the economic calendar.
 - **Earnings beyond U.S. large caps.** The earnings calendar covers the 64 U.S. names;
   guidance, filings (SEC EDGAR) and earnings-release links are not connected.
 - **Market intelligence.** Briefs, insights and the regime model run on prices;
   headlines are attached as possible catalysts, but causes stay unconfirmed.
-- **Private markets.** Companies, deals, funds and cap tables are fictional except data-desk
-  entries. No provider in the current set covers private rounds.
+- **Private markets.** Data-desk entries and U.S. Form D private placements (amount raised,
+  no valuation). Still missing: priced rounds and valuations, fund performance, non-U.S.
+  rounds (UK Companies House SH01 share-allotment filings are a candidate), operating KPIs.
 - **Not connected anywhere** (labelled in the app): options and implied volatility, OIS and
   policy pricing, credit ratings and CDS, FX forwards/NDFs and cross-currency basis,
   inflation swaps, IMF/BIS data, recession dating, positioning, shipping and energy

@@ -45,6 +45,8 @@ jobs:
       MARKET_ALPHAVANTAGE_BUDGET: "5"
       FUND_BUDGET: ${{ inputs.fundamentals_budget || '3' }}
       FUND_NGX_BUDGET: ${{ inputs.fundamentals_budget || '3' }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      FORMD_BUDGET: "15"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -64,10 +66,13 @@ jobs:
       - name: Fundamentals (dry run)
         continue-on-error: true
         run: set -o pipefail; npm run -s fundamentals:sync -- --dry-run 2>&1 | tee fundamentals.txt
+      - name: Macro data, calendars and Form D (dry run)
+        continue-on-error: true
+        run: set -o pipefail; npm run -s macro:sync -- --dry-run 2>&1 | tee macro.txt
       - name: Summary
         if: always()
         run: |
-          for f in providers market news fundamentals; do
+          for f in providers market news fundamentals macro; do
             [ -f "$f.txt" ] || continue
             { echo "## ${f^}"; echo '```'; cat "$f.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           done

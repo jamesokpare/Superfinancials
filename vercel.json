@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/fundamentals-sync",
       "schedule": "40 5 * * *"
+    },
+    {
+      "path": "/api/cron/macro-sync",
+      "schedule": "20 5 * * *"
     }
   ]
 }
