@@ -1,0 +1,21 @@
+{
+  "type": "histidx",
+  "checked": "2026-10-28T22:45:00Z",
+  "ids": {
+    "FX.AUDUSD": "2026-10-23",
+    "FX.EURUSD": "2026-10-23",
+    "FX.GBPUSD": "2026-10-23",
+    "FX.NZDUSD": "2026-10-23",
+    "FX.USDBRL": "2026-10-23",
+    "FX.USDCAD": "2026-10-23",
+    "FX.USDCHF": "2026-10-23",
+    "FX.USDHKD": "2026-10-23",
+    "FX.USDINR": "2026-10-23",
+    "FX.USDJPY": "2026-10-23",
+    "FX.USDKRW": "2026-10-23",
+    "FX.USDMXN": "2026-10-23",
+    "FX.USDNOK": "2026-10-23",
+    "FX.USDSEK": "2026-10-23",
+    "FX.USDZAR": "2026-10-23"
+  }
+}

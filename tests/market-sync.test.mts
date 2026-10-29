@@ -68,6 +68,8 @@ t("dry run resolves but writes nothing", dry.resolved > 0 && JSON.stringify(dryS
 const store = memoryStore(seed);
 const r = await runMarketSync({ store, now: NOW, only, providers: [...providers], historyBudget: 5 });
 const mkt = Object.fromEntries(store.dump().mkt.map((d) => [d.id, d.data as Record<string, unknown>]));
+const mh = Object.fromEntries((store.dump().mkthist ?? []).map((d) => [d.id, d.data as { parts: Record<string, Record<string, unknown>> }]));
+const part = (id: string, src: string) => { const x = mh[id]?.parts?.[src]; return x ? { ...x, id } : undefined; };
 const q = (mkt["d-2026-10-29"] as { q: Record<string, unknown[]> }).q;
 
 t("EODHD value with its change and date", JSON.stringify(q["EQ.AAPL"]) === JSON.stringify([262.5, 1.5, "2026-10-29", "eodhd"]), q["EQ.AAPL"]);
@@ -81,12 +83,13 @@ t("FRED skips missing '.' values", q["YD.US10"]?.[0] === 4.01 && q["YD.US10"]?.[
 t("NGX All-Share from NGX Pulse", q["IX.NGSEINDX"]?.[0] === 151234.56 && q["IX.NGSEINDX"]?.[3] === "ngxpulse", q["IX.NGSEINDX"]);
 t("unknown instrument stays simulated", r.unresolved.includes("IX.MOVE"), r.unresolved);
 
-const hFred = mkt["h-EC.USNFP@fred"]; const hAapl = mkt["h-EQ.AAPL@eodhd"];
+const hFred = part("EC.USNFP", "fred"); const hAapl = part("EQ.AAPL", "eodhd");
 t("FRED history doc written", !!hFred && decodeHist(hFred).length === 2, hFred);
 t("EODHD history backfilled within budget", !!hAapl && JSON.stringify(decodeHist(hAapl)) === JSON.stringify([{ t: "2026-10-27", c: 259 }, { t: "2026-10-28", c: 261 }]), hAapl);
-t("history not fetched for computed DXY", !mkt["h-FX.DXY@exchangerate"] && !Object.keys(mkt).some((k) => k.includes("calc")));
+t("history not fetched for computed DXY", !mh["FX.DXY"] && !Object.keys(mkt).some((k) => k.startsWith("h-")));
+t("history kept out of mkt; index lists instruments and last dates", (mkt._hist as { ids?: Record<string, string> })?.ids?.["EQ.AAPL"] === "2026-10-28" && (mkt._hist as { ids?: Record<string, string> }).ids?.["EC.USNFP"] === "2026-09-30", mkt._hist);
 
-t("old day doc folded into history and removed", !mkt["d-2026-09-01"] && decodeHist(mkt["h-CM.CL1@te"] ?? {})[0]?.c === 70.5, Object.keys(mkt));
+t("old day doc folded into history and removed", !mkt["d-2026-09-01"] && decodeHist(part("CM.CL1", "te") ?? {})[0]?.c === 70.5, Object.keys(mkt));
 t("recent day doc kept", !!mkt["d-2026-10-28"]);
 t("meta note written", String((mkt._meta as { note?: string }).note).startsWith("API sync 2026-10-29"), mkt._meta);
 
@@ -103,6 +106,16 @@ await runMarketSync({ store, now: NOW, only, providers: [...providers], historyB
 const mtn2 = store.dump().adm_inst.find((d) => d.id === "AD.NG.MTNN")!.data as { c: number[] };
 t("re-running does not duplicate NGX points", mtn2.c.length === 3, mtn2.c);
 t("re-running does not refetch EODHD history", !seen.includes("eodhd.com/api/eod/AAPL.US"), seen.filter((s) => s.includes("/eod/")));
+
+// --- legacy history docs in mkt move to mkthist ----
+const legacy = memoryStore({ mkt: [
+  { id: "h-FX.USDZAR", data: { type: "hist", id: "FX.USDZAR", src: "h10", t0: "2026-10-26", c: [18.1, 18.2], dd: [1], checked: "2026-10-28T09:20:00Z" } },
+  { id: "h-EQ.AAPL@eodhd", data: { type: "hist", id: "EQ.AAPL", src: "eodhd", t0: "2026-10-27", c: [259], dd: [], checked: "2026-10-28T09:20:00Z" } },
+] });
+await runMarketSync({ store: legacy, now: NOW, providers: [] });
+const lm = legacy.dump(); const lh = Object.fromEntries((lm.mkthist ?? []).map((d) => [d.id, d.data as { parts: Record<string, { c: number[] }> }]));
+t("legacy history moved to mkthist even with no providers", !lm.mkt.some((d) => d.id.startsWith("h-")) && lh["FX.USDZAR"]?.parts?.h10?.c?.[1] === 18.2 && lh["EQ.AAPL"]?.parts?.eodhd?.c?.[0] === 259, lm);
+t("index written for migrated history", (lm.mkt.find((d) => d.id === "_hist")?.data as { ids: Record<string, string> }).ids["FX.USDZAR"] === "2026-10-27");
 
 // --- nothing configured: nothing written ----
 const empty = memoryStore();
