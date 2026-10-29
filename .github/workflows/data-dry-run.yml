@@ -46,6 +46,7 @@ jobs:
       FUND_BUDGET: ${{ inputs.fundamentals_budget || '3' }}
       FUND_NGX_BUDGET: ${{ inputs.fundamentals_budget || '3' }}
       SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
       FORMD_BUDGET: "15"
     steps:
       - uses: actions/checkout@v4

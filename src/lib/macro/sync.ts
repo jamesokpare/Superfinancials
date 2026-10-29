@@ -5,6 +5,8 @@
  *   adm_series/<CC>.<CODE>   economic series  { kind:'eco', cc, code, name, unit, cat, freq, mi?, d[], v[], src, url, notes, gen:'macro-sync' }
  *   adm_cal/auto-<id>        calendar events  { title, date, cc, cat, imp, srcName, url, notes, ids, gen:'macro-sync' }
  *   adm_priv/secd-<cik>      private companies from SEC Form D filings (U.S. private placements)
+ *   adm_inst/<instrument id> prices for app instruments without a market-data source (World Bank
+ *                            commodity prices, SMARD German power), shown by the app as DESK prices
  *   macrosync/_meta          last-run summary { checked, n, note, sources }   (read by the sync-health check)
  *
  * It never touches documents the owner entered in the Data studio: a document
@@ -17,15 +19,15 @@ import { scrub } from "@/lib/providers";
 import { envKey } from "@/lib/providers/http";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
 import { formDFiling, formDIndex, type FormD } from "./formd";
-import { bisPolicyRates, dividendCalendar, ecb, econCalendar, fredReleaseCalendar, ipoCalendar, oecdCpi, treasuryAuctions, worldBank, type CalEvent, type MacroSeries } from "./sources";
+import { bisCpi, bisPolicyRates, dividendCalendar, ecb, econCalendar, eiaInventories, fredReleaseCalendar, icsCalendars, ipoCalendar, oecdCpi, pinkSheet, smardPower, treasuryAuctions, worldBank, type CalEvent, type InstSeries, type MacroSeries } from "./sources";
 
 export const GEN = "macro-sync";
 /** Countries the app knows (Country data hub), app codes. */
 export const MACRO_COUNTRIES = "AF AO AR AT AU BD BE BF BJ BR BW CA CD CG CH CI CL CM CN CO CV CZ DE DK DZ EG ES ET EU FI FR GA GH GM GN GR HK HU ID IE IL IN IQ IR IT JM JO JP KE KR KW KZ LB LK LR LY MA MG ML MU MW MX MY MZ NA NE NG NL NO NZ OM PE PH PK PL PT QA RO RU RW SA SD SE SG SL SN SS TG TH TN TR TW TZ UA AE UG UK US UY VE VN ZA ZM ZW".split(" ");
 
-export type MacroSourceId = "worldbank" | "bis" | "ecb" | "oecd" | "fred-calendar" | "treasury" | "econ-calendar" | "dividends" | "ipos" | "sec-formd";
+export type MacroSourceId = "worldbank" | "bis" | "ecb" | "oecd" | "fred-calendar" | "treasury" | "econ-calendar" | "dividends" | "ipos" | "sec-formd" | "bis-cpi" | "release-calendars" | "commodities" | "power" | "eia";
 type State = Record<string, unknown>;
-type Fetched = { series?: MacroSeries[]; events?: CalEvent[]; companies?: FormD[]; state?: State };
+type Fetched = { series?: MacroSeries[]; events?: CalEvent[]; companies?: FormD[]; instruments?: InstSeries[]; state?: State };
 const intEnv = (k: string, d: number) => { const n = Number(process.env[k]); return process.env[k] && Number.isFinite(n) && n >= 0 ? n : d; };
 const isoDay = (t: number) => new Date(t).toISOString().slice(0, 10);
 
@@ -62,9 +64,14 @@ export const MACRO_SOURCES: { id: MacroSourceId; name: string; needs?: string; r
   { id: "dividends", name: "Dividend calendar (FMP)", needs: "FMP_API_KEY", run: async (now) => ({ events: await dividendCalendar(now) }) },
   { id: "ipos", name: "IPO calendar (FMP / EODHD)", needs: "FMP_API_KEY|EODHD_API_KEY", run: async (now) => ({ events: await ipoCalendar(now) }) },
   { id: "sec-formd", name: "SEC Form D private placements", run: secFormD },
+  { id: "bis-cpi", name: "BIS consumer prices", run: async (now) => ({ series: await bisCpi(`${now.getUTCFullYear() - 10}-01`) }) },
+  { id: "release-calendars", name: "Eurostat and BLS release calendars", run: async (now) => ({ events: await icsCalendars(now) }) },
+  { id: "commodities", name: "World Bank commodity prices", run: async (now) => ({ instruments: await pinkSheet(now) }) },
+  { id: "power", name: "SMARD German power price", run: async () => ({ instruments: await smardPower() }) },
+  { id: "eia", name: "EIA energy inventories", needs: "EIA_API_KEY", run: async () => ({ series: await eiaInventories() }) },
 ];
 /** Which source writes each kind of calendar event (by id prefix), so a source that answered can retire its own stale events. */
-const EVENT_SOURCE: [string, MacroSourceId][] = [["auto-fred-", "fred-calendar"], ["auto-ust-", "treasury"], ["auto-eco-", "econ-calendar"], ["auto-div-", "dividends"], ["auto-ipo-", "ipos"]];
+const EVENT_SOURCE: [string, MacroSourceId][] = [["auto-fred-", "fred-calendar"], ["auto-ust-", "treasury"], ["auto-eco-", "econ-calendar"], ["auto-div-", "dividends"], ["auto-ipo-", "ipos"], ["auto-estat-", "release-calendars"], ["auto-bls-", "release-calendars"]];
 
 export type MacroReport = {
   date: string; dryRun: boolean; store: string;
@@ -72,6 +79,7 @@ export type MacroReport = {
   series: { written: number; unchanged: number; kept: string[] };
   events: { written: number; removed: number };
   companies: { written: number; removed: number; total: number };
+  instruments: { written: number; kept: string[] };
   note: string;
 };
 
@@ -79,15 +87,15 @@ const sameArr = (a: unknown, b: unknown[]) => Array.isArray(a) && a.length === b
 
 export async function runMacroSync(opts: { store?: DocStore; dryRun?: boolean; now?: Date; only?: MacroSourceId[] } = {}): Promise<MacroReport> {
   const now = opts.now ?? new Date(); const checked = now.toISOString(); const store = opts.store ?? openStore();
-  const report: MacroReport = { date: checked.slice(0, 10), dryRun: !!opts.dryRun, store: store.kind, sources: {}, series: { written: 0, unchanged: 0, kept: [] }, events: { written: 0, removed: 0 }, companies: { written: 0, removed: 0, total: 0 }, note: "" };
+  const report: MacroReport = { date: checked.slice(0, 10), dryRun: !!opts.dryRun, store: store.kind, sources: {}, series: { written: 0, unchanged: 0, kept: [] }, events: { written: 0, removed: 0 }, companies: { written: 0, removed: 0, total: 0 }, instruments: { written: 0, kept: [] }, note: "" };
   const prevMeta = (await store.list("macrosync")).find((d) => d.id === "_meta")?.data; const state: State = { ...((prevMeta?.state as State) ?? {}) };
 
   // 1. fetch every source; one failing source doesn't stop the others
-  const series: MacroSeries[] = []; const events: CalEvent[] = []; const companies: FormD[] = []; const failed = new Set<MacroSourceId>();
+  const series: MacroSeries[] = []; const events: CalEvent[] = []; const companies: FormD[] = []; const insts: InstSeries[] = []; const failed = new Set<MacroSourceId>();
   for (const s of MACRO_SOURCES) {
     if (opts.only && !opts.only.includes(s.id)) continue;
     if (s.needs && !s.needs.split("|").some((k) => envKey(k))) { report.sources[s.id] = { series: 0, events: 0, skipped: `${s.needs.replace("|", " or ")} not set` }; continue; }
-    try { const r = await s.run(now, state); series.push(...(r.series ?? [])); events.push(...(r.events ?? [])); companies.push(...(r.companies ?? [])); Object.assign(state, r.state ?? {}); report.sources[s.id] = { series: r.series?.length ?? 0, events: (r.events?.length ?? 0) + (r.companies?.length ?? 0) }; }
+    try { const r = await s.run(now, state); series.push(...(r.series ?? [])); events.push(...(r.events ?? [])); companies.push(...(r.companies ?? [])); insts.push(...(r.instruments ?? [])); Object.assign(state, r.state ?? {}); report.sources[s.id] = { series: (r.series?.length ?? 0) + (r.instruments?.length ?? 0), events: (r.events?.length ?? 0) + (r.companies?.length ?? 0) }; }
     catch (e) { failed.add(s.id); report.sources[s.id] = { series: 0, events: 0, error: scrub(String((e as Error)?.message ?? e)).slice(0, 300) }; }
   }
 
@@ -96,6 +104,10 @@ export async function runMacroSync(opts: { store?: DocStore; dryRun?: boolean; n
   // Indicators the owner already feeds into the macro panels, per country: those stay the owner's.
   const ownerMi = new Set([...existing.values()].filter((x) => x.gen !== GEN && x.mi).map((x) => `${x.cc}|${x.mi}`));
   const writes: Doc[] = [];
+  // Two automatic CPI series for one country: the OECD one feeds the macro panel, the BIS one is kept as a series only.
+  // Stored ones count too, so a day when OECD is down doesn't hand the panel to BIS and back.
+  const oecdCpiCc = new Set([...series.filter((x) => x.code === "CPIM" || x.code === "HICP").map((x) => x.cc), ...[...existing.values()].filter((x) => x.gen === GEN && (x.code === "CPIM" || x.code === "HICP")).map((x) => String(x.cc))]);
+  for (const x of series) if (x.code === "CPIB" && oecdCpiCc.has(x.cc)) x.mi = undefined;
   for (const s of series) {
     if (!s.points.length) continue;
     const id = `${s.cc}.${s.code}`; const cur = existing.get(id);
@@ -115,6 +127,17 @@ export async function runMacroSync(opts: { store?: DocStore; dryRun?: boolean; n
   const answered = (id: string) => { const src = EVENT_SOURCE.find(([p]) => id.startsWith(p))?.[1]; const r = src ? report.sources[src] : undefined; return !!r && !r.error && !r.skipped; };
   const stale = cal.filter((d) => d.data.gen === GEN && !fresh.has(d.id) && (String(d.data.date) < cutoff || (String(d.data.date) >= report.date && answered(d.id)))).map((d) => d.id);
   report.events = { written: calWrites.length, removed: stale.length };
+
+  // 3b. instrument prices → adm_inst/<id> (the app splices them onto that instrument as DESK prices)
+  const instDocs = new Map((await store.list("adm_inst")).map((d) => [d.id, d.data]));
+  const instWrites: Doc[] = [];
+  for (const x of insts) {
+    const cur = instDocs.get(x.id); if (cur && cur.gen !== GEN) { report.instruments.kept.push(x.id); continue; }
+    const d = x.points.map((p) => p.t), c = x.points.map((p) => p.v);
+    if (cur && sameArr(cur.d, d) && sameArr(cur.c, c)) continue;
+    instWrites.push({ id: x.id, data: { id: x.id, kind: "inst", arr: ["d", "c"], d, c, n: d.length, src: x.src, note: x.note, gen: GEN, upd: checked } });
+  }
+  report.instruments.written = instWrites.length;
 
   // 4. Form D filings → adm_priv/secd-<cik>: one company per issuer, each new filing adds a round
   const priv = new Map((await store.list("adm_priv")).map((d) => [d.id, d.data]));
@@ -140,11 +163,12 @@ export async function runMacroSync(opts: { store?: DocStore; dryRun?: boolean; n
   report.companies = { written: privWrites.size, removed: privRemove.length, total: ranked.length - privRemove.length };
 
   const ok = Object.values(report.sources).filter((s) => !s.error && !s.skipped).length; const tried = Object.keys(report.sources).length;
-  report.note = `${ok} of ${tried} sources answered; ${report.series.written} series updated (${report.series.unchanged} unchanged), ${calWrites.length} calendar events, ${report.companies.written} private companies from Form D${report.series.kept.length ? `; ${report.series.kept.length} owner series left as they are` : ""}.${failed.size ? ` Failed: ${[...failed].join(", ")}.` : ""}`;
+  report.note = `${ok} of ${tried} sources answered; ${report.series.written} series updated (${report.series.unchanged} unchanged), ${calWrites.length} calendar events, ${report.instruments.written} instrument price series, ${report.companies.written} private companies from Form D${report.series.kept.length ? `; ${report.series.kept.length} owner series left as they are` : ""}.${failed.size ? ` Failed: ${[...failed].join(", ")}.` : ""}`;
   if (!opts.dryRun) {
     if (writes.length) await store.upsert("adm_series", writes);
     if (calWrites.length) await store.upsert("adm_cal", calWrites);
     if (stale.length) await store.remove("adm_cal", stale);
+    if (instWrites.length) await store.upsert("adm_inst", instWrites);
     if (privWrites.size) await store.upsert("adm_priv", [...privWrites].map(([id, data]) => ({ id, data })));
     if (privRemove.length) await store.remove("adm_priv", privRemove);
     await store.upsert("macrosync", [{ id: "_meta", data: { type: "meta", checked, n: report.series.written + report.series.unchanged + calWrites.length + report.companies.total, note: report.note, sources: report.sources, state } }]);

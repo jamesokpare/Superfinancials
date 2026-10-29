@@ -7,9 +7,9 @@ import { runMacroSync, GEN } from "../src/lib/macro/sync";
 import { parseCsv, periodEnd } from "../src/lib/macro/sources";
 import { memoryStore } from "../src/lib/market/store";
 
-process.env.FRED_API_KEY = "test-fred"; process.env.FMP_API_KEY = "test-fmp"; process.env.EODHD_API_KEY = "test-eod";
+process.env.FRED_API_KEY = "test-fred"; process.env.FMP_API_KEY = "test-fmp"; process.env.EODHD_API_KEY = "test-eod"; process.env.EIA_API_KEY = "test-eia"; process.env.MACRO_RETRY_MS = "5";
 const NOW = new Date("2026-10-29T05:20:00Z");
-let oecdDown = false; let fmpPremium = false;
+let oecdDown = false; let fmpPremium = false; let oecdFlaky = 1; const oecdCalls: string[] = [];
 const IDX = `Description:           Daily Index of EDGAR Dissemination Feed by Form Type
 Last Data Received:    October 27, 2026
 
@@ -30,6 +30,13 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   const csv = (s: string, status = 200) => new Response(s, { status, headers: { "content-type": "text/csv" } });
   if (url.hostname === "api.worldbank.org") {
     const ind = url.pathname.split("/").pop();
+    if (url.searchParams.get("source") === "21") {
+      if (!url.pathname.startsWith("/v2/country/WLD/")) return json([{ message: [{ key: "Invalid value" }] }]);
+      if (ind === "PALUM") return json([{ page: 1, pages: 1 }, [{ date: "2026M09", value: 2612.5 }, { date: "2026M08", value: 2580.25 }]]);
+      if (ind === "PNGASEU") return json([{ page: 1, pages: 1 }, [{ date: "2026M09", value: 11.0 }]]);
+      if (ind === "PNICK") return json([{ page: 1, pages: 1 }, [{ date: "2026M09", value: 15100 }]]);
+      return json([{ page: 1, pages: 0, total: 0 }, null]);
+    }
     if (ind === "NY.GDP.MKTP.KD.ZG") return json([{ page: 1, pages: 1, per_page: 5000, total: 4 }, [
       { indicator: { id: ind }, country: { id: "NG", value: "Nigeria" }, countryiso3code: "NGA", date: "2025", value: 3.4 },
       { indicator: { id: ind }, country: { id: "NG", value: "Nigeria" }, countryiso3code: "NGA", date: "2024", value: 3.1 },
@@ -39,11 +46,15 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     if (ind === "NY.GDP.MKTP.CD") return json([{ page: 1, pages: 1 }, [{ indicator: { id: ind }, country: { id: "NG" }, date: "2025", value: 252_738_000_000 }]]);
     return json([{ page: 1, pages: 0, total: 0 }, null]);
   }
+  if (url.hostname === "stats.bis.org" && url.pathname.includes("WS_LONG_CPI")) return csv("FREQ,REF_AREA,UNIT_MEASURE,TIME_PERIOD,OBS_VALUE\nM,NG,771,2026-08,20.1\nM,NG,771,2026-09,19.4\nM,US,771,2026-09,3.1\n");
   if (url.hostname === "stats.bis.org") return csv("FREQ:Frequency,REF_AREA:Reference area,TIME_PERIOD:Time period or range,OBS_VALUE:Observation Value\nM,NG,2026-08,27.0\nM,NG,2026-09,27.0\nM,GB,2026-09,3.75\nM,XM,2026-09,2.0\nM,US,2026-09,\n");
   if (url.hostname === "data-api.ecb.europa.eu") {
+    if (url.pathname.includes("/EXR/")) return csv("KEY,FREQ,TIME_PERIOD,OBS_VALUE\nEXR.M.USD.EUR.SP00.A,M,2026-09,1.1\n");
     if (url.pathname.includes("/ICP/")) return csv('KEY,FREQ,REF_AREA,TIME_PERIOD,OBS_VALUE,TITLE\nICP.M.U2.N.000000.4.ANR,M,U2,2026-08,2.1,"HICP - Overall index, euro area"\nICP.M.U2.N.000000.4.ANR,M,U2,2026-09,2.2,"HICP - Overall index, euro area"\n');
     return csv("KEY,FREQ,TIME_PERIOD,OBS_VALUE\nFM.D.U2.EUR.4F.KR.DFR.LEV,D,2026-09-29,2.0\nFM.D.U2.EUR.4F.KR.DFR.LEV,D,2026-09-30,2.0\nFM.D.U2.EUR.4F.KR.DFR.LEV,D,2026-10-28,1.75\n");
   }
+  if (url.hostname === "sdmx.oecd.org") oecdCalls.push(url.pathname + "|" + new Headers(init?.headers).get("user-agent"));
+  if (url.hostname === "sdmx.oecd.org" && oecdFlaky > 0) { oecdFlaky--; return csv("Internal server error", 500); }
   if (url.hostname === "sdmx.oecd.org") return oecdDown ? csv("Service unavailable", 503) : csv("STRUCTURE,STRUCTURE_ID,ACTION,REF_AREA,FREQ,MEASURE,TIME_PERIOD,OBS_VALUE\ndataflow,X,I,USA,M,CPI,2026-08,2.9\ndataflow,X,I,USA,M,CPI,2026-09,3.0\ndataflow,X,I,GBR,M,CPI,2026-09,3.6\ndataflow,X,I,XXX,M,CPI,2026-09,9\n");
   if (url.hostname === "api.stlouisfed.org") return json({ release_dates: [
     { release_id: 10, release_name: "Consumer Price Index", date: "2026-11-12" }, { release_id: 50, release_name: "Employment Situation", date: "2026-11-06" },
@@ -53,6 +64,14 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     { security_type: "Note", security_term: "10-Year", reopening: "Yes", cusip: "91282CNX5", offering_amt: "42000000000", announcemt_date: "2026-11-05", auction_date: "2026-11-10", issue_date: "2026-11-15" },
     { security_type: "Bill", security_term: "13-Week", reopening: "No", cusip: "912797QZ1", offering_amt: "null", auction_date: "2026-11-02", issue_date: "2026-11-05" },
   ] });
+  if (url.hostname === "ec.europa.eu") return new Response("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e1\r\nDTSTART:20261117T100000Z\r\nSUMMARY:HICP - Final data\\, October 2026\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:e2\r\nDTSTART;VALUE=DATE:20270301\r\nSUMMARY:Too far ahead\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+  if (url.hostname === "www.bls.gov") return new Response("BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:20261106T133000Z\nSUMMARY:The Employment Situation for Octo\n ber 2026\nEND:VEVENT\nEND:VCALENDAR\n");
+  if (url.hostname === "www.smard.de") {
+    if (url.pathname.endsWith("/index_day.json")) return json({ timestamps: [1790000000000, 1792000000000] });
+    if (url.pathname.endsWith("_day_1792000000000.json")) return json({ series: [[1793055600000, 95.2], [1793142000000, 101.75], [1793228400000, null]] }); // 27, 28, 29 Oct 2026 00:00 Berlin
+    return json({ series: [] });
+  }
+  if (url.hostname === "api.eia.gov") return json({ response: { data: url.pathname.endsWith("PET.WCESTUS1.W") ? [{ period: "2026-10-23", value: 420500 }, { period: "2026-10-16", value: 421800 }] : [] } });
   if (url.hostname === "www.sec.gov") {
     secUA.push(new Headers((input instanceof Request ? input.headers : undefined) ?? init?.headers).get("user-agent") ?? "");
     if (url.pathname === "/Archives/edgar/daily-index/2026/QTR4/form.20261027.idx") return new Response(IDX);
@@ -88,6 +107,7 @@ t("period ends", periodEnd("2026-09") === "2026-09-30" && periodEnd("2026-Q1") =
 
 const store = memoryStore({
   // The owner's own Nigeria policy-rate series (data studio) and a hand-made event: both must survive.
+  adm_inst: [{ id: "CM.NI", data: { id: "CM.NI", kind: "inst", d: ["2026-09-30"], c: [15000], src: "Desk" } }, { id: "AD.NG.MTNN", data: { id: "AD.NG.MTNN", kind: "inst", d: ["2026-10-28"], c: [455] } }],
   adm_series: [{ id: "NG.POL", data: { kind: "eco", cc: "NG", code: "POL", mi: "POL", d: ["2026-09-30"], v: [27], src: "Desk" } }, { id: "NG.GDPA", data: { kind: "eco", cc: "NG", code: "GDPA", d: ["2025-12-31"], v: [3.3], src: "Desk" } }],
   adm_cal: [{ id: "desk-1", data: { title: "CBN MPC", date: "2026-11-24", cc: "NG" } }, { id: "auto-ust-2026-11-03-OLD", data: { title: "Moved auction", date: "2026-11-03", gen: GEN } }, { id: "auto-fred-10-2026-01-01", data: { title: "Old CPI", date: "2026-01-01", gen: GEN } }],
 });
@@ -113,7 +133,7 @@ const ten = C.get("auto-ust-2026-11-10-91282CNX5");
 t("Treasury auctions: title, amount, category", ten?.title === "U.S. Treasury 10-Year Note auction (reopening)" && /US\$42\.0 bn/.test(String(ten?.notes)) && ten?.cat === "auc" && ten?.imp === 2, ten);
 t("calendar: owner events kept; stale and rescheduled auto events removed", C.has("desk-1") && !C.has("auto-ust-2026-11-03-OLD") && !C.has("auto-fred-10-2026-01-01") && r.events.removed === 2, [...C.keys()]);
 const meta = (await store.list("macrosync"))[0]?.data;
-t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total && /10 of 10 sources/.test(String(meta?.note)), meta);
+t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total && /15 of 15 sources/.test(String(meta?.note)), meta);
 
 const cpi = C.get("auto-eco-2026-11-12-us-cpi-yoy-oct");
 t("economic calendar: consensus, prior, time; low-importance and unknown countries dropped", cpi?.cons === "3.1" && cpi?.prior === "3" && cpi?.actual === "" && cpi?.time === "13:30" && cpi?.imp === 3 && ![...C.keys()].some((k) => /minor-survey|unknown-place/.test(k)), cpi);
@@ -130,11 +150,21 @@ t("Form D: related persons and filing link in the description", /Ada Lovelace \(
 t("SEC requests carry a descriptive User-Agent", secUA.length > 0 && secUA.every((u) => /Superfinancials/.test(u)), secUA.slice(0, 2));
 const fdState = ((await store.list("macrosync"))[0]?.data.state as { formd?: { done?: string[] } })?.formd;
 t("Form D: processed days remembered (weekend skipped, today's index not final)", !!fdState?.done?.includes("2026-10-27") && !!fdState?.done?.includes("2026-10-25"), fdState);
+const I = new Map((await store.list("adm_inst")).map((d) => [d.id, d.data]));
+t("World Bank commodity prices: monthly, dated month-end, written for the app instrument", JSON.stringify(I.get("CM.ALI")?.d) === '["2026-08-31","2026-09-30"]' && JSON.stringify(I.get("CM.ALI")?.c) === "[2580.25,2612.5]" && I.get("CM.ALI")?.gen === GEN, I.get("CM.ALI"));
+t("European gas converted from US$/mmBtu to EUR/MWh at the ECB rate", JSON.stringify(I.get("CM.TTF")?.c) === "[34.12]", I.get("CM.TTF"));
+t("an instrument price series entered by the owner is left alone; NGX listings untouched", I.get("CM.NI")?.src === "Desk" && r.instruments.kept.includes("CM.NI") && JSON.stringify(I.get("AD.NG.MTNN")?.c) === "[455]", I.get("CM.NI"));
+t("SMARD German power: daily, Berlin midnight → calendar day, blanks skipped", JSON.stringify(I.get("CM.PWDE")?.d) === '["2026-10-27","2026-10-28"]' && JSON.stringify(I.get("CM.PWDE")?.c) === "[95.2,101.75]", I.get("CM.PWDE"));
+t("BIS CPI: monthly; feeds the panel only where OECD doesn't", S.get("NG.CPIB")?.mi === "CPI" && S.get("US.CPIB")?.mi === "" && JSON.stringify(S.get("NG.CPIB")?.v) === "[20.1,19.4]", [S.get("NG.CPIB")?.mi, S.get("US.CPIB")?.mi]);
+t("OECD: one all-areas request, browser-like user agent, retried after a 500", oecdCalls.length === 3 /* dry run: 500 then OK; real run: OK */ && oecdCalls.every((c) => c.includes("/.M.N.CPI.PA._T.N.GY|Mozilla/5.0")), oecdCalls);
+t("Eurostat ICS: escaped commas, UTC time, window", C.get("auto-estat-2026-11-17-hicp-final-data-october-2026")?.title === "Euro area: HICP - Final data, October 2026" && C.get("auto-estat-2026-11-17-hicp-final-data-october-2026")?.time === "10:00" && ![...C.keys()].some((k) => k.includes("too-far")), [...C.keys()].filter((k) => k.includes("estat")));
+t("BLS ICS: folded lines joined, major release important", C.get("auto-bls-2026-11-06-the-employment-situation-for-october-2026")?.imp === 3, [...C.keys()].filter((k) => k.includes("bls")));
+t("EIA inventories in million barrels, weekly", JSON.stringify(S.get("US.CRUDEINV")?.v) === "[421.8,420.5]" && S.get("US.CRUDEINV")?.freq === "W", S.get("US.CRUDEINV"));
 const before = S.get("UK.GDPA")?.upd;
 oecdDown = true;
 const r2 = await runMacroSync({ store, now: new Date("2026-10-30T05:20:00Z") });
 const S2 = new Map((await store.list("adm_series")).map((d) => [d.id, d.data]));
-t("re-run: unchanged series are not rewritten, filings not refetched", r2.companies.written === 0 && r2.series.written === 0 && S2.get("UK.GDPA")?.upd === before, r2.series);
+t("re-run: unchanged series and prices are not rewritten, filings not refetched", r2.instruments.written === 0 && r2.companies.written === 0 && r2.series.written === 0 && S2.get("UK.GDPA")?.upd === before, r2.series);
 t("a failing source is reported; its old data stays", !!r2.sources.oecd.error && S2.has("US.CPIM") && /Failed: oecd/.test(r2.note), r2);
 
 fmpPremium = true;

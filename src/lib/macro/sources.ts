@@ -40,13 +40,18 @@ export function parseCsv(text: string): Record<string, string>[] {
   const head = (rows.shift() ?? []).map((h) => h.split(":")[0].trim().replace(/^﻿/, "")); // "REF_AREA:Reference area" → "REF_AREA"
   return rows.filter((r) => r.length > 1 || r[0]).map((r) => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ""])));
 }
-async function getCsv(name: string, url: URL, timeoutMs = 60_000): Promise<Record<string, string>[]> {
-  let res: Response;
-  try { res = await fetch(url, { headers: { ...UA, accept: "text/csv, application/vnd.sdmx.data+csv, */*" }, signal: AbortSignal.timeout(timeoutMs) }); }
-  catch (e) { throw new ProviderError(name, `request failed: ${(e as Error).message}`); }
-  const text = await res.text();
-  if (!res.ok) throw new ProviderError(name, `HTTP ${res.status}: ${text.slice(0, 160)}`, res.status);
-  return parseCsv(text);
+const BROWSER_UA = { "user-agent": "Mozilla/5.0 (compatible; Superfinancials data sync; +https://github.com/jamesokpare/Superfinancials)" };
+/** CSV over HTTP. Overloaded SDMX services (OECD) answer 429/500/503 at busy times: retried with backoff. */
+async function getCsv(name: string, url: URL, timeoutMs = 60_000, retries = 2, ua: Record<string, string> = UA): Promise<Record<string, string>[]> {
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    try { res = await fetch(url, { headers: { ...ua, accept: "text/csv, application/vnd.sdmx.data+csv, */*" }, signal: AbortSignal.timeout(timeoutMs) }); }
+    catch (e) { throw new ProviderError(name, `request failed: ${(e as Error).message}`); }
+    const text = await res.text();
+    if (res.ok) return parseCsv(text);
+    if (attempt < retries && [429, 500, 502, 503, 504].includes(res.status)) { await new Promise((r) => setTimeout(r, (attempt + 1) * (Number(process.env.MACRO_RETRY_MS) || 15_000))); continue; }
+    throw new ProviderError(name, `HTTP ${res.status}: ${text.slice(0, 160)}`, res.status);
+  }
 }
 /** "2026-09", "2026-M09", "2026-Q3", "2026" → the last day of that period (how the app dates macro series). */
 export function periodEnd(p: string): string | null {
@@ -136,8 +141,9 @@ export async function ecb(from: string): Promise<MacroSeries[]> {
 /** ISO3 used by OECD → app code. */
 export const OECD_AREAS: Record<string, string> = { USA: "US", GBR: "UK", JPN: "JP", CAN: "CA", AUS: "AU", DEU: "DE", FRA: "FR", ITA: "IT", ESP: "ES", NLD: "NL", BEL: "BE", AUT: "AT", IRL: "IE", PRT: "PT", GRC: "GR", FIN: "FI", SWE: "SE", NOR: "NO", DNK: "DK", CHE: "CH", POL: "PL", CZE: "CZ", HUN: "HU", KOR: "KR", MEX: "MX", TUR: "TR", CHL: "CL", COL: "CO", ISR: "IL", NZL: "NZ", BRA: "BR", IND: "IN", IDN: "ID", ZAF: "ZA", CHN: "CN", SAU: "SA", ARG: "AR" };
 export async function oecdCpi(from: string): Promise<MacroSeries[]> {
-  const key = `${Object.keys(OECD_AREAS).join("+")}.M.N.CPI.PA._T.N.GY`;
-  const rows = await getCsv("OECD", buildUrl("https://sdmx.oecd.org/public/rest", `/data/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/${key}`, { startPeriod: from.slice(0, 7), format: "csvfile" }), 90_000);
+  // All reference areas in one request (empty first key part), filtered below: long "+" lists and
+  // areas without a monthly series make the OECD service fail. It also rejects library default user agents.
+  const rows = await getCsv("OECD", buildUrl("https://sdmx.oecd.org/public/rest", "/data/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/.M.N.CPI.PA._T.N.GY", { startPeriod: from.slice(0, 7), format: "csvfile" }), 120_000, 2, BROWSER_UA);
   const by = new Map<string, Point[]>();
   for (const r of rows) {
     const cc = OECD_AREAS[r.REF_AREA ?? ""]; const t = periodEnd(r.TIME_PERIOD ?? ""); const v = Number(r.OBS_VALUE);
@@ -236,4 +242,113 @@ export async function ipoCalendar(now: Date): Promise<CalEvent[]> {
     ["FMP", "FMP_API_KEY", async () => (await fmp<FmpIpo[]>("/ipos-calendar", { from, to })).flatMap((x) => { const dt = splitDt(String(x.date ?? "")); return dt && (x.company || x.symbol) ? [mk("Financial Modeling Prep IPO calendar", "https://site.financialmodelingprep.com/developer/docs/stable/ipos-calendar", String(x.symbol ?? ""), String(x.company ?? x.symbol), String(x.exchange ?? ""), dt.date, Number(x.marketCap) || 0, [x.actions, x.priceRange ? `price range ${x.priceRange}` : "", num(x.shares) ? `${Number(x.shares).toLocaleString("en-US")} shares` : ""].filter(Boolean).join("; ") + ".")] : []; })],
     ["EODHD", "EODHD_API_KEY", async () => ((await eod<{ ipos?: EodIpo[] }>("/calendar/ipos", { from, to })).ipos ?? []).flatMap((x) => { const dt = splitDt(String(x.start_date ?? "")); return dt && x.name ? [mk("EODHD IPO calendar", "https://eodhd.com/financial-apis/calendar-upcoming-earnings-ipos-and-splits", String(x.code ?? "").replace(/\.US$/, ""), String(x.name), String(x.exchange ?? ""), dt.date, 0, [x.deal_type, num(x.offer_price) ? `offer price ${x.offer_price}` : num(x.price_from) ? `price range ${x.price_from}–${x.price_to}` : "", num(x.shares) ? `${Number(x.shares).toLocaleString("en-US")} shares` : ""].filter(Boolean).join("; ") + ".")] : []; })],
   ]);
+}
+
+// --- commodity prices for instruments without a market-data source -------------------------------
+/** A price series for an existing app instrument (written as a data-desk instrument doc, adm_inst/<id>). */
+export type InstSeries = { id: string; points: Point[]; src: string; note: string };
+
+/** World Bank Commodity Price Data (the "Pink Sheet"), monthly averages, via the World Bank API (source 21, GEM Commodities). CC BY 4.0. */
+export const PINK: { code: string; id: string; note: string; conv?: "mmbtu-eurmwh" }[] = [
+  { code: "PNGASEU", id: "CM.TTF", note: "Natural gas, Europe (TTF), monthly average; converted from US$/mmBtu to EUR/MWh at the ECB monthly EUR/USD rate", conv: "mmbtu-eurmwh" },
+  { code: "PNGASJP", id: "CM.JKM", note: "Liquefied natural gas, Japan import price, monthly average (a proxy for the JKM spot marker)" },
+  { code: "PCOALAU", id: "CM.MTF", note: "Coal, Australian (Newcastle) thermal, monthly average" },
+  { code: "PALUM", id: "CM.ALI", note: "Aluminium, LME, monthly average" },
+  { code: "PNICK", id: "CM.NI", note: "Nickel, LME, monthly average" },
+  { code: "PZINC", id: "CM.ZNC", note: "Zinc, LME, monthly average" },
+  { code: "PIORECR", id: "CM.TIO", note: "Iron ore, fines 62% Fe, CFR China, monthly average" },
+  { code: "PPOIL", id: "CM.FCPO", note: "Palm oil, Malaysia, monthly average" },
+  { code: "PUREA", id: "CM.UREA", note: "Urea, monthly average" },
+  { code: "PDAP", id: "CM.DAP", note: "DAP (diammonium phosphate), monthly average" },
+];
+export async function pinkSheet(now: Date): Promise<InstSeries[]> {
+  const from = `${now.getUTCFullYear() - 5}M01`, to = `${now.getUTCFullYear()}M12`;
+  const out: InstSeries[] = []; const errors: string[] = [];
+  let eurusd: Map<string, number> | null = null;
+  for (const p of PINK) {
+    try {
+      const r = await getJson<[{ message?: unknown }, { date?: string; value?: number | null }[] | null]>("World Bank", buildUrl("https://api.worldbank.org/v2", `/country/WLD/indicator/${p.code}`, { source: 21, format: "json", date: `${from}:${to}`, per_page: 500 }), { timeoutMs: 60_000, init: { headers: UA } });
+      if (!Array.isArray(r) || r[0]?.message) throw new ProviderError("World Bank", `${p.code}: ${JSON.stringify(r?.[0]?.message ?? r).slice(0, 160)}`);
+      let pts = (r[1] ?? []).flatMap((x) => { const t = x.date ? periodEnd(x.date) : null; return t && x.value != null && Number.isFinite(x.value) ? [{ t, v: x.value }] : []; });
+      if (p.conv === "mmbtu-eurmwh") {
+        eurusd ??= new Map((await ecbSeries("EXR", "M.USD.EUR.SP00.A", from.replace("M", "-"))).map((x) => [periodEnd(x.t)!, x.v]));
+        pts = pts.flatMap((x) => { const fx = eurusd!.get(x.t); return fx ? [{ t: x.t, v: x.v * 3.412 / fx }] : []; });
+      }
+      if (pts.length) out.push({ id: p.id, points: sortPts(pts.map((x) => ({ t: x.t, v: Number(x.v.toFixed(2)) }))), src: "World Bank commodity prices (Pink Sheet)", note: `${p.note}. World Bank indicator ${p.code}, CC BY 4.0.` });
+    } catch (e) { errors.push((e as Error).message); }
+  }
+  if (!out.length && errors.length) throw new ProviderError("World Bank", `commodity prices: ${errors[0]}`);
+  return out;
+}
+
+/** German/Luxembourg day-ahead power price, daily, from SMARD (Bundesnetzagentur), CC BY 4.0. Filter 4169 = day-ahead price DE-LU. */
+export async function smardPower(): Promise<InstSeries[]> {
+  const base = "https://www.smard.de/app/chart_data/4169/DE-LU";
+  const idx = await getJson<{ timestamps?: number[] }>("SMARD", new URL(`${base}/index_day.json`), { init: { headers: UA } });
+  const ts = (idx.timestamps ?? []).slice(-2);
+  if (!ts.length) throw new ProviderError("SMARD", "no data chunks listed");
+  const pts: Point[] = [];
+  for (const t of ts) {
+    const r = await getJson<{ series?: [number, number | null][] }>("SMARD", new URL(`${base}/4169_DE-LU_day_${t}.json`), { init: { headers: UA } });
+    // Timestamps are local midnight (Berlin); +12 h lands on the right calendar day in UTC.
+    for (const [ms, v] of r.series ?? []) if (v != null && Number.isFinite(v)) pts.push({ t: new Date(ms + 12 * 36e5).toISOString().slice(0, 10), v: Number(v.toFixed(2)) });
+  }
+  if (!pts.length) throw new ProviderError("SMARD", "no prices returned");
+  return [{ id: "CM.PWDE", points: sortPts(pts), src: "SMARD (Bundesnetzagentur)", note: "German/Luxembourg day-ahead electricity price, daily average (EPEX Spot via SMARD), EUR/MWh. Not the front-year future. CC BY 4.0, Bundesnetzagentur | SMARD.de." }];
+}
+
+// --- U.S. energy inventories ----------------------------------------------------------------
+/** U.S. EIA weekly inventories (API v2, free key in EIA_API_KEY). Public domain. */
+export const EIA_SERIES: { id: string; code: string; name: string; unit: string }[] = [
+  { id: "PET.WCESTUS1.W", code: "CRUDEINV", name: "U.S. commercial crude oil inventories (ex SPR)", unit: "million barrels" },
+  { id: "PET.WGTSTUS1.W", code: "GASOLINEINV", name: "U.S. total motor gasoline inventories", unit: "million barrels" },
+  { id: "PET.WDISTUS1.W", code: "DISTILLATEINV", name: "U.S. distillate fuel oil inventories", unit: "million barrels" },
+  { id: "NG.NW2_EPG0_SWO_R48_BCF.W", code: "NATGASSTOR", name: "U.S. working gas in underground storage (Lower 48)", unit: "Bcf" },
+];
+export async function eiaInventories(): Promise<MacroSeries[]> {
+  const key = requireKey("EIA", "EIA_API_KEY"); const out: MacroSeries[] = [];
+  for (const s of EIA_SERIES) {
+    const r = await getJson<{ response?: { data?: { period?: string; value?: number | string | null }[] } }>("EIA", buildUrl("https://api.eia.gov/v2", `/seriesid/${s.id}`, { api_key: key, length: 260 }));
+    const scale = s.unit === "million barrels" ? 1e-3 : 1; // EIA reports thousand barrels
+    const pts = (r.response?.data ?? []).flatMap((x) => { const v = Number(x.value); return x.period && /^\d{4}-\d{2}-\d{2}$/.test(x.period) && x.value != null && Number.isFinite(v) ? [{ t: x.period, v: Number((v * scale).toFixed(2)) }] : []; });
+    if (pts.length) out.push({ cc: "US", code: s.code, name: s.name, unit: s.unit, cat: "mk", freq: "W", src: "U.S. Energy Information Administration", url: "https://www.eia.gov/opendata/", notes: `EIA series ${s.id}, weekly. Public domain.`, points: sortPts(pts) });
+  }
+  return out;
+}
+
+// --- BIS long series on consumer prices (monthly CPI y/y, ~64 economies) -------------------------
+/** BIS WS_LONG_CPI, unit 771 = year-on-year change. Free reuse with attribution (BIS terms). */
+export async function bisCpi(from: string): Promise<MacroSeries[]> {
+  const rows = await getCsv("BIS", buildUrl("https://stats.bis.org/api/v1", "/data/WS_LONG_CPI/M..771", { startPeriod: from, format: "csv" }));
+  const by = new Map<string, Point[]>();
+  for (const r of rows) {
+    const cc = r.REF_AREA ? toApp(r.REF_AREA) : ""; const t = periodEnd(r.TIME_PERIOD ?? ""); const v = Number(r.OBS_VALUE);
+    if (!/^[A-Z]{2}$/.test(cc) || !t || r.OBS_VALUE === "" || !Number.isFinite(v)) continue;
+    (by.get(cc) ?? by.set(cc, []).get(cc)!).push({ t, v: Number(v.toFixed(2)) });
+  }
+  if (!rows.length) throw new ProviderError("BIS", "no CPI rows returned");
+  return [...by].map(([cc, pts]) => ({ cc, code: "CPIB", name: "Consumer price inflation (monthly, BIS)", unit: "% y/y", cat: "in" as const, freq: "M" as const, mi: "CPI", src: "BIS consumer prices", url: "https://data.bis.org/topics/CPI", notes: "Bank for International Settlements, long series on consumer prices (WS_LONG_CPI), year-on-year change.", points: sortPts(pts) }));
+}
+
+// --- official release calendars published as iCalendar (ICS) -----------------------------------
+/** Minimal iCalendar reader: VEVENT SUMMARY / DTSTART (date or UTC date-time), with line unfolding. */
+export function parseIcs(text: string): { title: string; date: string; time: string; uid: string }[] {
+  const lines = text.replace(/\r?\n[ \t]/g, "").split(/\r?\n/); const out: { title: string; date: string; time: string; uid: string }[] = []; let ev: Record<string, string> | null = null;
+  for (const l of lines) {
+    if (l === "BEGIN:VEVENT") { ev = {}; continue; }
+    if (l === "END:VEVENT") { if (ev?.SUMMARY && ev.DTSTART) { const m = ev.DTSTART.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})\d{2}(Z?))?$/); if (m) out.push({ title: ev.SUMMARY.replace(/\\([,;\\])/g, "$1").replace(/\\n/gi, " ").trim(), date: `${m[1]}-${m[2]}-${m[3]}`, time: m[4] && m[6] === "Z" ? `${m[4]}:${m[5]}` : "", uid: ev.UID ?? "" }); } ev = null; continue; }
+    if (!ev) continue; const i = l.indexOf(":"); if (i < 0) continue; const k = l.slice(0, i).split(";")[0].toUpperCase(); ev[k] = l.slice(i + 1);
+  }
+  return out;
+}
+const icsGet = async (name: string, url: string) => { const r = await fetch(url, { headers: { ...BROWSER_UA, accept: "text/calendar, */*" }, signal: AbortSignal.timeout(60_000) }); const t = await r.text(); if (!r.ok) throw new ProviderError(name, `HTTP ${r.status}`, r.status); return parseIcs(t); };
+/** Eurostat euro-indicator releases and U.S. BLS releases, next 45 days. */
+export async function icsCalendars(now: Date): Promise<CalEvent[]> {
+  const from = now.toISOString().slice(0, 10), to = new Date(now.getTime() + 45 * 864e5).toISOString().slice(0, 10);
+  const inWin = (d: string) => d >= from && d <= to; const out: CalEvent[] = []; const errs: string[] = [];
+  const BIG = /CPI|inflation|HICP|GDP|employment situation|unemployment|retail|industrial production|producer price|PPI/i;
+  try { for (const e of await icsGet("Eurostat", "https://ec.europa.eu/eurostat/cache/RELEASE_CALENDAR/calendar_EN.ics")) if (inWin(e.date)) out.push({ id: `estat-${e.date}-${slug(e.title)}`, title: `Euro area: ${e.title}`, date: e.date, time: e.time, cc: "EU", cat: "eco", imp: BIG.test(e.title) ? 2 : 1, srcName: "Eurostat release calendar", url: "https://ec.europa.eu/eurostat/news/release-calendar", notes: "Scheduled Eurostat euro-indicator release." }); } catch (e) { errs.push((e as Error).message); }
+  try { for (const e of await icsGet("BLS", "https://www.bls.gov/schedule/news_release/bls.ics")) if (inWin(e.date)) out.push({ id: `bls-${e.date}-${slug(e.title)}`, title: `U.S. ${e.title}`, date: e.date, time: e.time, cc: "US", cat: "eco", imp: BIG.test(e.title) ? 3 : 1, srcName: "BLS release calendar", url: "https://www.bls.gov/schedule/news_release/", notes: "Scheduled U.S. Bureau of Labor Statistics release." }); } catch (e) { errs.push((e as Error).message); }
+  if (!out.length && errs.length) throw new ProviderError("calendars", errs.join(" | "));
+  return out;
 }

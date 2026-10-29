@@ -14,10 +14,10 @@ import "server-only";
 import { envKey } from "@/lib/providers/http";
 import { scrub } from "@/lib/providers";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
-import { canonicalUrl, currentsNews, marketauxNews, newsApiAiNews, type NewsItem, type NewsProvider } from "./sources";
+import { canonicalUrl, currentsNews, marketauxNews, newsApiAiNews, officialNews, type NewsItem, type NewsProvider } from "./sources";
 
-const ENVS: Record<NewsProvider, string> = { marketaux: "MARKETAUX_API_KEY", newsapi: "NEWSAPI_AI_KEY", currents: "CURRENTS_API_KEY" };
-const LABEL: Record<NewsProvider, string> = { marketaux: "Marketaux", newsapi: "NewsAPI.ai", currents: "Currents" };
+const ENVS: Record<Exclude<NewsProvider, "official">, string> = { marketaux: "MARKETAUX_API_KEY", newsapi: "NEWSAPI_AI_KEY", currents: "CURRENTS_API_KEY" };
+const LABEL: Record<NewsProvider, string> = { marketaux: "Marketaux", newsapi: "NewsAPI.ai", currents: "Currents", official: "Official sources" };
 const COL = "mktnews";
 const DAY = 864e5;
 
@@ -75,13 +75,15 @@ export async function runNewsSync(opts: NewsSyncOptions = {}): Promise<NewsSyncR
   const now = opts.now ?? new Date(); const checked = now.toISOString();
   const since = new Date(now.getTime() - (opts.lookbackHours ?? 36) * 36e5);
   const keepDays = opts.keepDays ?? intEnv("NEWS_KEEP_DAYS", 14); const perDay = opts.perDay ?? 200;
-  const configured = (opts.providers ?? (Object.keys(ENVS) as NewsProvider[]).filter((p) => envKey(ENVS[p])));
+  // Official feeds need no key, so they always run (last: a story also carried by a news API keeps that richer copy).
+  const configured = opts.providers ?? [...(Object.keys(ENVS) as Exclude<NewsProvider, "official">[]).filter((p) => envKey(ENVS[p])), "official" as const];
 
   const fetched: Record<string, number> = {}; const errors: Record<string, string> = {};
   const fetchers: Record<NewsProvider, () => Promise<NewsItem[]>> = {
     marketaux: () => marketauxNews(since, opts.marketauxPages ?? intEnv("MARKETAUX_PAGES", 3)),
     newsapi: () => newsApiAiNews(since),
     currents: () => currentsNews(since),
+    official: () => officialNews(since),
   };
   const batches = await Promise.all(configured.map(async (p) => {
     try { const r = await fetchers[p](); fetched[p] = r.length; return r; }

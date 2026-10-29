@@ -97,7 +97,7 @@ async function ukCompany(el, num) {
 const REG = { q: '', cc: '', res: null, err: null, busy: false, auto: false, desk: {}, deskSt: 'off', db: null };
 const REG_LS = 'sf.reg.v1';
 const REG_STATUS = ['Active', 'Inactive', 'Dissolved', 'In liquidation', 'In administration', 'Struck off', 'Unknown'];
-const REG_SRC = { dd: ['DATA DESK', 'live desk'], uk: ['COMPANIES HOUSE', ''], lei: ['GLEIF', ''] };
+const REG_SRC = { dd: ['DATA DESK', 'live desk'], uk: ['COMPANIES HOUSE', ''], lei: ['GLEIF', ''], no: ['BRØNNØYSUND', ''], fr: ['SIRENE', ''] };
 const regLei = s => { const n = String(s || '').trim().toUpperCase().replace(/\s+/g, ''); return /^[A-Z0-9]{18}\d{2}$/.test(n) ? n : null; };
 /** The app's country codes use UK for the United Kingdom; registers use GB. */
 const regCC = c => { const u = String(c || '').toUpperCase(); return u === 'GB' ? 'UK' : u; };
@@ -152,7 +152,7 @@ function regResults(pg) {
   const live = REG.res ? REG.res.items : [];
   const rows = [...desk, ...live];
   const S = REG.res && REG.res.sources; const st = (k, l) => !S ? '' : S[k].total != null ? `${l}: ${nf(S[k].total, 0)} matches` : S[k].error ? `${l}: unavailable (${esc(S[k].error)})` : '';
-  const foot = [`Data desk: ${desk.length}`, st('uk', 'Companies House'), st('lei', 'GLEIF')].filter(Boolean).join(' · ');
+  const foot = [`Data desk: ${desk.length}`, st('uk', 'Companies House'), st('no', 'Brønnøysund'), st('fr', 'SIRENE'), st('lei', 'GLEIF')].filter(Boolean).join(' · ');
   el.innerHTML = `${REG.busy ? '<p class="note" style="padding:8px 20px">Searching the registers…</p>' : ''}${REG.err ? ukErr(REG.err) : ''}<div class="pb flush" id="regT"></div><div class="pf"><span>${foot}</span><span>Live registers show their first 25 matches</span></div>`;
   table($('#regT', el), { dense: true, rows, empty: REG.busy ? '<b>Searching…</b>' : '<b>No companies match</b>Try another spelling, the registration number or the LEI.', cols: [
     { k: 'n', h: 'Company', f: x => `<a class="tk" ${regHref(x.src + '~' + x.id)} style="font-family:var(--f-ui)">${esc(x.name)}</a><div class="sub" style="max-width:420px">${esc(x.address || '')}</div>` },
@@ -194,6 +194,27 @@ async function regLeiCompany(el, lei) {
   ] });
 }
 
+/* ---------- a Norwegian or French register record ---------- */
+async function regNatCompany(el, src, id) {
+  el.innerHTML = '<section class="panel"><p class="note" style="padding:16px 20px">Loading the register record…</p></section>';
+  let c; try { c = await ukGet(`/api/companies/${src}/${encodeURIComponent(id)}`); } catch (e) { el.innerHTML = `<section class="panel">${ukErr(e)}</section>`; return; }
+  el.innerHTML = `<section class="panel uk-co"><header class="ph"><span class="pt">${esc(c.name)}</span><span class="pm">${regStatus(c.status)} ${regSrc(src)} <a class="btn sm ghost" href="${esc(regUrl(c.link))}" target="_blank" rel="noopener noreferrer">View on the register</a></span></header>
+    <div class="pb"><dl class="kv">
+      <div><dt>${src === 'no' ? 'Organisation number' : 'SIREN'}</dt><dd class="mono">${esc(c.number)}</dd></div>
+      <div><dt>Country</dt><dd>${esc(regCN(c.cc))}</dd></div>
+      <div><dt>Legal form</dt><dd>${esc(c.type || '—')}</dd></div>
+      <div><dt>Founded</dt><dd>${regD(c.created)}</dd></div>
+      ${c.registered ? `<div><dt>Registered</dt><dd>${regD(c.registered)}</dd></div>` : ''}
+      <div><dt>Address</dt><dd>${esc(c.address || '—')}</dd></div>
+      <div><dt>Industry</dt><dd>${esc(c.industry || '—')}</dd></div>
+      ${c.employees != null ? `<div><dt>Employees</dt><dd>${nf(c.employees, 0)}</dd></div>` : ''}
+      ${c.web ? `<div><dt>Website</dt><dd><a href="${esc(regUrl(c.web))}" target="_blank" rel="noopener noreferrer">${esc(String(c.web).replace(/^https?:\/\//, ''))}</a></dd></div>` : ''}
+    </dl></div></section>
+    ${c.officers.length ? `<div class="grid">${panelH('Directors and officers', { cls: 'c12', id: 'regNo', flush: true, meta: `${c.officers.length}` })}</div>` : ''}
+    <div class="pf" style="border:0;padding:4px 0"><span>Source: ${esc(c.registry)}, fetched live. ${esc(c.licence)}.</span></div>`;
+  if (c.officers.length) table($('#regNo', el), { dense: true, rows: c.officers, cols: [{ k: 'n', h: 'Name', f: r => esc(r.name) }, { k: 'r', h: 'Role', f: r => esc(r.role || '—') }] });
+}
+
 /* ---------- a data-desk registry entry ---------- */
 function regDeskCompany(el, id) {
   const x = REG.desk[id];
@@ -223,9 +244,9 @@ function regDeskCompany(el, id) {
 
 /* ---------- page ---------- */
 PAGES.registry = (pg, p) => {
-  const m = /^(uk|lei|dd)~(.+)$/.exec(p || ''); const kind = m ? m[1] : null, key = m ? m[2] : null;
+  const m = /^(uk|lei|dd|no|fr)~(.+)$/.exec(p || ''); const kind = m ? m[1] : null, key = m ? m[2] : null;
   const cc = typeof ccOpts === 'function' ? ccOpts().slice(1) : [];
-  pg.innerHTML = hdr('registry', 'Company records from around the world in one search: the live UK register (Companies House), the global LEI register (GLEIF, 200+ countries) and companies entered by the Superfinancials data desk. Open a company for its registration details, officers, owners, filings and group structure where the source has them.', `<a class="btn" href="https://search.gleif.org/" target="_blank" rel="noopener noreferrer">GLEIF</a><a class="btn" href="${UK_FIND}/" target="_blank" rel="noopener noreferrer">Companies House</a>`) +
+  pg.innerHTML = hdr('registry', 'Company records from around the world in one search: the live national registers of the UK (Companies House), Norway (Brønnøysund) and France (SIRENE), the global LEI register (GLEIF, 200+ countries) and companies entered by the Superfinancials data desk. Open a company for its registration details, officers, owners, filings and group structure where the source has them.', `<a class="btn" href="https://search.gleif.org/" target="_blank" rel="noopener noreferrer">GLEIF</a><a class="btn" href="${UK_FIND}/" target="_blank" rel="noopener noreferrer">Companies House</a>`) +
     `<section class="panel"><form class="uk-f" id="regForm" role="search"><input class="inp" id="regQ" type="search" maxlength="160" placeholder="Company name, registration number or LEI" aria-label="Search the company registry" value="${esc(kind ? '' : REG.q)}"><select class="inp" id="regCc" aria-label="Country" style="flex:0 1 220px"><option value="">All countries</option>${cc.map(([k, l]) => `<option value="${esc(k)}" ${k === REG.cc ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><button class="btn pri" type="submit">Search</button></form><div id="regR"></div></section><div id="regC"></div>`;
   $('#regForm', pg).addEventListener('submit', e => {
     e.preventDefault(); const q = $('#regQ', pg).value.trim(); REG.cc = $('#regCc', pg).value; if (q.length < 2) return;
@@ -239,6 +260,7 @@ PAGES.registry = (pg, p) => {
     const box = $('#regC', pg);
     if (kind === 'uk') { const n = ukNum(key); if (n) ukCompany(box, n); else box.innerHTML = '<section class="panel"><div class="empty"><b>Not a UK company number</b></div></section>'; }
     else if (kind === 'lei') { const l = regLei(key); if (l) regLeiCompany(box, l); else box.innerHTML = '<section class="panel"><div class="empty"><b>Not a valid LEI</b></div></section>'; }
+    else if (kind === 'no' || kind === 'fr') regNatCompany(box, kind, key);
     else regDeskCompany(box, key);
   } else if (REG.auto && REG.q) { REG.auto = false; regSearch(pg, REG.q); }
   else if (REG.q) { regResults(pg); if (!REG.res && !REG.busy && !REG.err) regSearch(pg, REG.q); }
@@ -247,7 +269,7 @@ PAGES.registry = (pg, p) => {
     if (all.length) { $('#regR', pg).innerHTML = `<header class="ph"><span class="pt" style="font-size:14px">Recently added by the data desk</span></header><div class="pb flush" id="regRecent"></div>`; table($('#regRecent', pg), { dense: true, rows: all, cols: [{ k: 'n', h: 'Company', f: x => `<a class="tk" ${regHref('dd~' + x.id)} style="font-family:var(--f-ui)">${esc(x.name)}</a>` }, { k: 'c', h: 'Country', f: x => esc(regCN(x.cc)) }, { k: 'no', h: 'Number', f: x => `<span class="mono">${esc(x.regNo || '—')}</span>` }, { k: 's', h: 'Status', f: x => regStatus(x.status) }] }); }
   }
 };
-PAGES.ukreg = (pg, p) => PAGES.registry(pg, p ? (/^(uk|lei|dd)~/.test(p) ? p : 'uk~' + p) : null);
+PAGES.ukreg = (pg, p) => PAGES.registry(pg, p ? (/^(uk|lei|dd|no|fr)~/.test(p) ? p : 'uk~' + p) : null);
 
 /* =====================================================================
    Data studio: "Company registry" tab (platform owner only)
@@ -393,7 +415,7 @@ if (typeof searchItems === 'function') {
       if (num && live) return [...res, ...desk, { kind: 'registry', html: row('Company registry', `Open UK company ${esc(num)}`, 'Companies House'), run: () => go('registry', 'uk~' + num) }];
       const extra = [...desk];
       const k = t.toLowerCase(); const hit = live ? REGS.cache.get(k) : null;
-      if (hit && hit.items) hit.items.slice(0, 3).forEach(x => extra.push({ kind: 'registry', html: row(esc(x.name), 'Registered company', `${esc(regCN(x.cc))}${x.number ? ' · ' + esc(x.number) : ''} · ${x.src === 'uk' ? 'Companies House' : 'GLEIF'}`), run: () => go('registry', x.src + '~' + x.id) }));
+      if (hit && hit.items) hit.items.slice(0, 3).forEach(x => extra.push({ kind: 'registry', html: row(esc(x.name), 'Registered company', `${esc(regCN(x.cc))}${x.number ? ' · ' + esc(x.number) : ''} · ${({ uk: 'Companies House', no: 'Brønnøysund', fr: 'SIRENE' })[x.src] || 'GLEIF'}`), run: () => go('registry', x.src + '~' + x.id) }));
       // Skip the network for an exact ticker or page code: the user is not looking for a company.
       // Cancelling also drops a lookup still pending from an earlier keystroke (e.g. "aap" before "aapl").
       const exact = !!(res[0] && res[0].s >= 100);

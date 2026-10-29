@@ -41,3 +41,26 @@ if (typeof calAll === 'function') {
     return ev;
   };
 }
+/* Instruments the daily sync prices from World Bank monthly averages or SMARD's daily German spot price, not from
+   the futures contract the simulator models: while those prices are present, name and venue say what they are. */
+const REAL_RENAME = {
+  'CM.TTF': ['European natural gas (TTF), monthly average', 'World Bank'], 'CM.JKM': ['Japan LNG import price, monthly', 'World Bank'],
+  'CM.MTF': ['Australian thermal coal (Newcastle), monthly average', 'World Bank'], 'CM.ALI': ['Aluminium, monthly average', 'World Bank (LME)'],
+  'CM.NI': ['Nickel, monthly average', 'World Bank (LME)'], 'CM.ZNC': ['Zinc, monthly average', 'World Bank (LME)'],
+  'CM.TIO': ['Iron ore 62% Fe, monthly average', 'World Bank'], 'CM.FCPO': ['Palm oil (Malaysia), monthly average', 'World Bank'],
+  'CM.UREA': ['Urea, monthly average', 'World Bank'], 'CM.DAP': ['DAP phosphate, monthly average', 'World Bank'],
+  'CM.PWDE': ['German day-ahead power, daily average', 'SMARD / EPEX Spot'],
+};
+const REAL_ORIG = {};
+function realRename() {
+  try {
+    for (const [id, [name, exch]] of Object.entries(REAL_RENAME)) {
+      const o = typeof BY !== 'undefined' && BY[id]; if (!o) continue; REAL_ORIG[id] ??= { name: o.name, exch: o.exch, cls: o.cls };
+      const synced = typeof ADM !== 'undefined' && ADM.I[id] && ADM.I[id].gen === 'macro-sync' && ADM.I[id].pts.length;
+      Object.assign(o, synced && REAL.on ? { name, exch, cls: id === 'CM.PWDE' ? 'Day-ahead spot (daily average)' : 'Monthly average price' } : REAL_ORIG[id]);
+    }
+  } catch (e) { console.error(e); }
+}
+if (typeof admBuild === 'function') { const _ab = admBuild; admBuild = function (...a) { const r = _ab(...a); realRename(); return r; }; }
+if (typeof loadUser === 'function') { const _lu = loadUser; loadUser = function (...a) { const r = _lu(...a); realRename(); return r; }; }
+realRename();
