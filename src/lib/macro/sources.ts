@@ -289,15 +289,38 @@ async function getBuf(name: string, url: string, headers: Record<string, string>
   if (!res.ok) throw new ProviderError(name, `HTTP ${res.status} for ${url.slice(0, 120)}`, res.status);
   return Buffer.from(await res.arrayBuffer());
 }
+/** Column names in the workbook → series codes, for a workbook without the row of codes. */
+export const PINK_NAMES: [RegExp, string][] = [
+  [/^crude oil,? brent/i, "CRUDE_BRENT"], [/^natural gas,? europe/i, "NGAS_EUR"], [/^(liquefied natural gas|lng),? japan/i, "NGAS_JP"], [/^coal,? australian/i, "COAL_AUS"],
+  [/^alumin(i)?um/i, "ALUMINUM"], [/^nickel/i, "NICKEL"], [/^zinc/i, "ZINC"], [/^iron ore/i, "IRON_ORE"], [/^palm oil/i, "PALM_OIL"], [/^urea/i, "UREA_EE_BULK"], [/^dap\b/i, "DAP"],
+];
+/** "1960M01", "1960-01", "Jan-1960" or an Excel date serial → month end. */
+function pinkMonth(c: string | number): string | null {
+  if (typeof c === "number") { if (c < 3000 || c > 80000) return null; const d = new Date(Date.UTC(1899, 11, 30) + c * 864e5); return periodEnd(d.toISOString().slice(0, 7)); }
+  const s = c.trim(); let m: RegExpMatchArray | null;
+  if ((m = s.match(/^(\d{4})\s*M\s*(\d{1,2})$/i))) return periodEnd(`${m[1]}-${m[2].padStart(2, "0")}`);
+  if ((m = s.match(/^(\d{4})-(\d{2})(?:-\d{2})?$/))) return periodEnd(`${m[1]}-${m[2]}`);
+  return null;
+}
 /** Rows of the "Monthly Prices" sheet → series by code (codes upper-cased; the workbook writes "Zinc", "Tin"). */
 export function parsePinkSheet(rows: (string | number)[][]): Map<string, Point[]> {
-  const head = rows.findIndex((r) => r.some((c) => String(c).trim().toUpperCase() === "CRUDE_BRENT"));
-  if (head < 0) throw new ProviderError("World Bank", "Pink Sheet layout changed: no row of series codes found");
-  const codes = rows[head].map((c) => String(c).trim().toUpperCase()); const out = new Map<string, Point[]>();
+  // The row of series codes (CRUDE_BRENT …) when there is one; otherwise the row of commodity names.
+  let head = rows.findIndex((r) => r.some((c) => String(c).trim().toUpperCase() === "CRUDE_BRENT"));
+  let codes: string[] = head >= 0 ? rows[head].map((c) => String(c).trim().toUpperCase()) : [];
+  if (head < 0) {
+    head = rows.findIndex((r) => r.some((c) => /^crude oil,? brent/i.test(String(c).trim())));
+    if (head >= 0) codes = rows[head].map((c) => PINK_NAMES.find(([re]) => re.test(String(c).trim()))?.[1] ?? "");
+  }
+  if (head < 0) {
+    const peek = rows.filter((r) => r.some((c) => String(c).trim())).slice(0, 8).map((r) => r.slice(0, 4).map((c) => String(c).slice(0, 30)).join(" | ")).join(" // ");
+    throw new ProviderError("World Bank", `Pink Sheet layout changed: no row of series codes or commodity names. First rows: ${peek}`.slice(0, 600));
+  }
+  const out = new Map<string, Point[]>();
   for (const r of rows.slice(head + 1)) {
-    const t = /^\d{4}M\d{2}$/.test(String(r[0]).trim()) ? periodEnd(String(r[0]).trim()) : null; if (!t) continue;
+    const t = pinkMonth(r[0] ?? ""); if (!t) continue;
     codes.forEach((c, i) => { if (!c || i === 0) return; const v = typeof r[i] === "number" ? r[i] as number : Number(String(r[i] ?? "").replace(/,/g, "")); if (String(r[i] ?? "").trim() === "" || !Number.isFinite(v)) return; (out.get(c) ?? out.set(c, []).get(c)!).push({ t, v }); });
   }
+  if (!out.size) throw new ProviderError("World Bank", `Pink Sheet: header found on row ${head + 1}, but no monthly rows after it (first cells: ${rows.slice(head + 1, head + 4).map((r) => String(r[0] ?? "")).join(", ")})`);
   return out;
 }
 export async function pinkSheet(now: Date): Promise<InstSeries[]> {
