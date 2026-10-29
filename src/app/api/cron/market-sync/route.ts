@@ -7,22 +7,13 @@
  *   ?dry=1               fetch and report without writing
  *   ?only=EQ.AAPL,NGX    limit to some instruments
  */
-import { timingSafeEqual } from "node:crypto";
+import { cronGuard } from "@/lib/auth/cron";
 import { runMarketSync } from "@/lib/market/sync";
 
 export const maxDuration = 300;
 
-function authorized(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  const got = req.headers.get("authorization") ?? "";
-  if (!secret) return false;
-  const want = `Bearer ${secret}`;
-  return got.length === want.length && timingSafeEqual(Buffer.from(got), Buffer.from(want));
-}
-
 export async function GET(req: Request) {
-  if (!process.env.CRON_SECRET) return Response.json({ code: "not_configured", message: "Set CRON_SECRET to enable the market sync" }, { status: 503 });
-  if (!authorized(req)) return Response.json({ code: "unauthorized", message: "Bad or missing CRON_SECRET" }, { status: 401 });
+  const denied = cronGuard(req); if (denied) return denied;
   const sp = new URL(req.url).searchParams;
   try {
     const report = await runMarketSync({ dryRun: sp.get("dry") === "1", only: sp.get("only")?.split(",").map((s) => s.trim()).filter(Boolean) });

@@ -73,6 +73,8 @@ map to low / medium / high effort.
 | `src/app/api/providers/` | Data-connection status and health check |
 | `src/lib/market/` | Market sync: instrument → provider map, fetchers, writer |
 | `src/app/api/cron/market-sync/` | Scheduled sync endpoint (Vercel Cron) |
+| `src/lib/news/`, `src/app/api/cron/news-sync/` | News sync and its scheduled endpoint |
+| `public/legacy/news-feed.js` | Adds provider headlines to the legacy news pages |
 | `supabase/migrations/` | Schema and row-level security |
 | `supabase/seed-data/` | Shared documents exported from the artifact's database |
 | `public/i18n/` | Interface translations (zh, ja, ko, fr, de, es, pt) |
@@ -180,6 +182,34 @@ npm run market:sync
 `--only=EQ.AAPL,FX.USDNGN,NGX` limits a run to some instruments. The output
 lists, per provider, how many instruments it resolved and any error.
 
+## Market news
+
+The Market news page now leads with **Latest headlines** from the connected
+news providers. A news sync (`src/lib/news/`) pulls recent articles from
+Marketaux (tickers and sentiment), NewsAPI.ai (broad business coverage) and
+Currents, plus African-markets queries, and stores them in `mktnews/day-<date>`
+documents. The same story from several providers is kept once (matched by URL,
+then title) and headlines older than 14 days are removed.
+
+In the browser, `public/legacy/news-feed.js` (loaded after the main script)
+reads that collection and adds:
+- a headlines panel at the top of Market news, filterable by provider,
+  watchlist, portfolio and text;
+- **Reported that day** on generated briefs about a company, when a headline
+  about it appeared that session. The brief still marks the cause unconfirmed;
+- headlines on each security page's News tab and the overview's news panel.
+
+Headlines are linked to instruments by the provider's ticker tags and by
+company names in the title. With no headlines stored, the pages look exactly
+as before.
+
+**Schedule.** `vercel.json` runs `GET /api/cron/news-sync` at 06:15 and
+16:45 UTC daily (the Hobby plan allows each job once a day). By hand:
+
+```bash
+npm run news:sync -- --dry-run
+```
+
 ## Scripts
 
 | Command | What it does |
@@ -191,3 +221,4 @@ lists, per provider, how many instruments it resolved and any error.
 | `npm run seed` | Load `supabase/seed-data` into Supabase |
 | `npm run providers:check` | Ping every configured data connection |
 | `npm run market:sync` | Pull end-of-day prices from the providers into the app (`-- --dry-run` to preview) |
+| `npm run news:sync` | Pull recent headlines from the news providers (`-- --dry-run` to preview) |
