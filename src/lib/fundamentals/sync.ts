@@ -5,7 +5,9 @@
  *
  * Statements change quarterly, so each run refreshes only the companies with
  * no data or data older than `refreshDays`, oldest first, up to `budget`
- * companies. Every run also refreshes next earnings dates for all companies
+ * companies; a company that has reported since its last fetch goes first.
+ * Each doc also holds quarterly earnings (report dates, EPS and revenue
+ * actuals and consensus estimates). Every run updates those for all companies
  * from one bulk calendar call. The app turns these into ratios using the live
  * price (public/legacy/fundamentals.js).
  */
@@ -15,7 +17,7 @@ import { scrub } from "@/lib/providers";
 import { US_EQUITIES } from "@/lib/market/instruments";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
 import {
-  alphaVantageFundamentals, eodhdEarningsCalendar, eodhdFundamentals, fmpEarningsCalendar, fmpFundamentals,
+  alphaVantageFundamentals, eodhdEarningsCalendar, eodhdFundamentals, fmpEarningsCalendar, fmpFundamentals, tidyEarn,
   type FundDoc, type FundProvider,
 } from "./sources";
 
@@ -64,7 +66,10 @@ export async function runFundamentalsSync(opts: FundSyncOptions = {}): Promise<F
 
   const tks = US_EQUITIES.split(" ").filter((t) => !opts.only || opts.only.includes(t));
   const age = (tk: string) => { const d = docs.get(`EQ.${tk}`); return d ? nowMs - (Date.parse(d.asOf) || 0) : Infinity; };
-  const due = tks.filter((tk) => age(tk) > refreshDays * DAY).sort((a, b) => age(b) - age(a));
+  // A company that has reported since its last fetch goes first, so actuals arrive the next morning.
+  const today = iso(nowMs);
+  const reported = (tk: string) => { const d = docs.get(`EQ.${tk}`); return !!d?.nextEarn && d.nextEarn < today && d.asOf.slice(0, 10) <= d.nextEarn; };
+  const due = tks.filter((tk) => reported(tk) || age(tk) > refreshDays * DAY).sort((a, b) => Number(reported(b)) - Number(reported(a)) || age(b) - age(a));
   const batch = due.slice(0, budget);
 
   const updated: FundSyncReport["updated"] = []; const failed: FundSyncReport["failed"] = []; const writes = new Map<string, FundDoc>();
@@ -86,19 +91,22 @@ export async function runFundamentalsSync(opts: FundSyncOptions = {}): Promise<F
     }
   }));
 
-  // Next earnings dates for every company from one calendar call.
+  // Recent actuals and upcoming dates and estimates for every company, from one calendar call.
   const earnings: FundSyncReport["earnings"] = { updated: 0 };
-  const from = iso(nowMs), to = iso(nowMs + 120 * DAY);
+  const from = iso(nowMs - 10 * DAY), to = iso(nowMs + 120 * DAY);
   for (const p of (["eodhd", "fmp"] as const).filter((x) => configured.includes(x))) {
     try {
       const cal = p === "eodhd" ? await eodhdEarningsCalendar(tks, from, to) : await fmpEarningsCalendar(tks, from, to);
       if (!cal.size) continue;
       earnings.source = p;
       for (const tk of tks) {
-        const id = `EQ.${tk}`; const c = cal.get(tk); const d = writes.get(id) ?? docs.get(id);
-        if (!c || !d) continue;
-        if (d.nextEarn === c.date && (d.earnTime === c.time || !c.time)) continue;
-        writes.set(id, { ...d, nextEarn: c.date, earnTime: c.time ?? d.earnTime }); earnings.updated++;
+        const id = `EQ.${tk}`; const rows = cal.get(tk); const d = writes.get(id) ?? docs.get(id);
+        if (!rows || !d) continue;
+        const earn = tidyEarn([...(d.earn ?? []), ...rows], today);
+        const next = earn.find((r) => r.d >= today && r.eps === null);
+        const upd: FundDoc = { ...d, earn, nextEarn: next?.d ?? d.nextEarn, earnTime: next ? next.time ?? d.earnTime : d.earnTime };
+        if (JSON.stringify(upd) === JSON.stringify(d)) continue;
+        writes.set(id, upd); earnings.updated++;
       }
       break;
     } catch (e) { earnings.error = scrub(String((e as Error)?.message ?? e)).slice(0, 200); }
@@ -108,7 +116,7 @@ export async function runFundamentalsSync(opts: FundSyncOptions = {}): Promise<F
   const bySrc: Record<string, number> = {}; for (const u of updated) bySrc[u.src] = (bySrc[u.src] ?? 0) + 1;
   const note = `Fundamentals sync ${iso(nowMs)}: ${updated.length} companies refreshed${updated.length ? ` (${Object.entries(bySrc).map(([p, n]) => `${LABEL[p as FundProvider]} ${n}`).join(", ")})` : ""}` +
     `; ${total} of ${US_EQUITIES.split(" ").length} have reported figures` + (due.length > batch.length ? `; ${due.length - batch.length} queued for later runs` : "") +
-    (earnings.updated ? `; ${earnings.updated} earnings dates updated` : "") + (failed.length ? `; failed: ${failed.map((f) => f.tk).join(", ")}` : "") + ".";
+    (earnings.updated ? `; earnings calendar updated ${earnings.updated} companies` : "") + (failed.length ? `; failed: ${failed.map((f) => f.tk).join(", ")}` : "") + ".";
   const report: FundSyncReport = { dryRun: !!opts.dryRun, configured, updated, failed, pending: Math.max(0, due.length - batch.length), earnings, total, note };
   if (opts.dryRun || !configured.length) return report;
 

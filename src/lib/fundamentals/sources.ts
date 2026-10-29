@@ -14,6 +14,19 @@ export type FundProvider = "eodhd" | "fmp" | "alphavantage";
 /** One fiscal year. */
 export type FundYear = { y: number; end: string; rev: number | null; gp: number | null; op: number | null; ni: number | null; eps: number | null; assets: number | null; debt: number | null; equity: number | null; fcf: number | null };
 
+/** One quarterly report: past (with actuals) or upcoming (estimates only). */
+export type EarnRow = {
+  d: string;                  // report date YYYY-MM-DD
+  p: string | null;           // fiscal period end
+  time: "Before open" | "After close" | null;
+  eps: number | null;         // reported EPS
+  est: number | null;         // consensus EPS before the report
+  rev: number | null;         // reported revenue
+  revEst: number | null;      // consensus revenue
+};
+/** Consensus EPS for the current quarter now and 7, 30 and 90 days ago (to measure revisions). */
+export type EarnTrend = { p: string | null; now: number | null; d7: number | null; d30: number | null; d90: number | null; revEst: number | null };
+
 export type FundDoc = {
   type: "fund";
   id: string;          // app instrument id, e.g. EQ.AAPL
@@ -35,7 +48,19 @@ export type FundDoc = {
   earnTime: "Before open" | "After close" | null;
   /** Up to five fiscal years, oldest first. */
   fy: FundYear[];
+  /** Quarterly reports, oldest first: up to 12 past plus the next upcoming one. */
+  earn?: EarnRow[];
+  earnTrend?: EarnTrend | null;
 };
+
+/** Sorts by report date, keeps the last 12 past reports and the first upcoming one. */
+export function tidyEarn(rows: EarnRow[], today: string): EarnRow[] {
+  const by = new Map<string, EarnRow>();
+  for (const r of rows) if (r.d) { const o = by.get(r.d); by.set(r.d, o ? { ...o, ...Object.fromEntries(Object.entries(r).filter(([, v]) => v !== null)) } as EarnRow : r); }
+  const all = [...by.values()].sort((a, b) => (a.d < b.d ? -1 : 1));
+  const past = all.filter((r) => r.d < today || r.eps !== null).slice(-12); const next = all.find((r) => r.d >= today && r.eps === null);
+  return next ? [...past, next] : past;
+}
 
 export const num = (v: unknown): number | null => {
   if (v === null || v === undefined || v === "" || v === "None" || v === "NA" || v === "-") return null;
@@ -79,8 +104,14 @@ export async function eodhdFundamentals(id: string, tk: string): Promise<FundDoc
   // Next report: the earliest future entry in the earnings history.
   const today = new Date().toISOString().slice(0, 10);
   const next = byDate(E.History).map(({ r }) => r).filter((r) => (day(r.reportDate) ?? "") >= today).sort((a, b) => (String(a.reportDate) < String(b.reportDate) ? -1 : 1))[0];
+  const earn = tidyEarn(byDate(E.History).map(({ d: p, r }) => ({
+    d: day(r.reportDate) ?? "", p, time: timing(r.beforeAfterMarket), eps: num(r.epsActual), est: num(r.epsEstimate), rev: null, revEst: null,
+  })), today);
+  const tq = byDate(E.Trend).map(({ d: p, r }) => ({ p, r })).find(({ r }) => r.period === "0q");
+  const earnTrend: EarnTrend | null = tq ? { p: tq.p, now: num(tq.r.epsTrendCurrent), d7: num(tq.r.epsTrend7daysAgo), d30: num(tq.r.epsTrend30daysAgo), d90: num(tq.r.epsTrend90daysAgo), revEst: num(tq.r.revenueEstimateAvg) } : null;
+  if (earnTrend && earn.length && earn.at(-1)!.eps === null && earn.at(-1)!.revEst === null) earn[earn.length - 1] = { ...earn.at(-1)!, revEst: earnTrend.revEst };
   return {
-    type: "fund", id, tk, src: "eodhd", asOf: new Date().toISOString(), ccy: String(G.CurrencyCode || "USD"), name: G.Name ? String(G.Name) : undefined, shares,
+    type: "fund", id, tk, src: "eodhd", earn, earnTrend, asOf: new Date().toISOString(), ccy: String(G.CurrencyCode || "USD"), name: G.Name ? String(G.Name) : undefined, shares,
     ttm: { basis: "TTM", rev, gp: num(H.GrossProfitTTM), op: rev !== null && num(H.OperatingMarginTTM) !== null ? rev * num(H.OperatingMarginTTM)! : null,
       ni: rev !== null && num(H.ProfitMargin) !== null ? rev * num(H.ProfitMargin)! : null, ebitda: num(H.EBITDA), eps: num(H.DilutedEpsTTM) ?? num(H.EarningsShare),
       fcf: q4.length === 4 ? sum(...q4) : fy.at(-1)?.fcf ?? null, divPs: num(H.DividendShare) ?? 0 },
@@ -100,7 +131,7 @@ export async function fmpFundamentals(id: string, tk: string): Promise<FundDoc |
   if (inc.length < 2) return null;
   // Optional endpoints (some need a paid plan): failures fall back to fiscal-year figures.
   const opt = (p: Promise<Record<string, unknown>[]>) => p.catch(() => [] as Record<string, unknown>[]);
-  const [ttmRows, est, earn] = await Promise.all([opt(list("/income-statement-ttm")), opt(list("/analyst-estimates", { period: "annual", limit: 3 })), opt(list("/earnings", { limit: 6 }))]);
+  const [ttmRows, est, earn_] = await Promise.all([opt(list("/income-statement-ttm")), opt(list("/analyst-estimates", { period: "annual", limit: 3 })), opt(list("/earnings", { limit: 14 }))]);
   const P = profile[0] ?? {};
   const fy: FundYear[] = inc.slice(0, 5).map((r) => {
     const end = day(r.date) ?? ""; const b = bal.find((x) => x.date === r.date) ?? {}; const c = cf.find((x) => x.date === r.date) ?? {};
@@ -112,10 +143,11 @@ export async function fmpFundamentals(id: string, tk: string): Promise<FundDoc |
   const price = num(P.price); const mcap = num(P.marketCap);
   const shares = price && mcap ? mcap / price : num(L.weightedAverageShsOutDil);
   const today = new Date().toISOString().slice(0, 10);
-  const nextRow = earn.filter((r) => (day(r.date) ?? "") >= today && num(r.epsActual) === null).sort((a, b) => (String(a.date) < String(b.date) ? -1 : 1))[0];
+  const nextRow = earn_.filter((r) => (day(r.date) ?? "") >= today && num(r.epsActual) === null).sort((a, b) => (String(a.date) < String(b.date) ? -1 : 1))[0];
   const fwd = est.filter((r) => (day(r.date) ?? "") > lastFy.end).sort((a, b) => (String(a.date) < String(b.date) ? -1 : 1))[0];
+  const earn = tidyEarn(earn_.map((r) => ({ d: day(r.date) ?? "", p: null, time: null, eps: num(r.epsActual), est: num(r.epsEstimated), rev: num(r.revenueActual), revEst: num(r.revenueEstimated) })), today);
   return {
-    type: "fund", id, tk, src: "fmp", asOf: new Date().toISOString(), ccy: String(L.reportedCurrency || P.currency || "USD"), name: P.companyName ? String(P.companyName) : undefined, shares,
+    type: "fund", id, tk, src: "fmp", earn, earnTrend: null, asOf: new Date().toISOString(), ccy: String(L.reportedCurrency || P.currency || "USD"), name: P.companyName ? String(P.companyName) : undefined, shares,
     ttm: { basis: T ? "TTM" : "FY", rev: num(src.revenue), gp: num(src.grossProfit), op: num(src.operatingIncome), ni: num(src.netIncome), ebitda: num(src.ebitda),
       eps: num(src.epsDiluted) ?? num(src.epsdiluted) ?? num(src.eps), fcf: lastFy.fcf, divPs: num(P.lastDividend) ?? 0 },
     bs: { date: day(bal[0]?.date), equity: num(bal[0]?.totalStockholdersEquity), debt: num(bal[0]?.totalDebt), cash: num(bal[0]?.cashAndShortTermInvestments) ?? num(bal[0]?.cashAndCashEquivalents) },
@@ -133,7 +165,9 @@ export async function alphaVantageFundamentals(id: string, tk: string): Promise<
   const inc = ((await av.incomeStatement(tk)).annualReports as Record<string, unknown>[] | undefined) ?? [];
   const bal = ((await av.balanceSheet(tk)).annualReports as Record<string, unknown>[] | undefined) ?? [];
   const cf = ((await av.cashFlow(tk)).annualReports as Record<string, unknown>[] | undefined) ?? [];
-  const ern = ((await av.earnings(tk)).annualEarnings as Record<string, unknown>[] | undefined) ?? [];
+  const ernRes = await av.earnings(tk);
+  const ern = (ernRes.annualEarnings as Record<string, unknown>[] | undefined) ?? [];
+  const qtr = (ernRes.quarterlyEarnings as Record<string, unknown>[] | undefined) ?? [];
   if (inc.length < 2) return null;
   const fy: FundYear[] = inc.slice(0, 5).map((r) => {
     const end = String(r.fiscalDateEnding); const b = bal.find((x) => x.fiscalDateEnding === end) ?? {}; const c = cf.find((x) => x.fiscalDateEnding === end) ?? {};
@@ -142,8 +176,9 @@ export async function alphaVantageFundamentals(id: string, tk: string): Promise<
       assets: num(b.totalAssets), debt: num(b.shortLongTermDebtTotal), equity: num(b.totalShareholderEquity), fcf: fcfOf(c, "freeCashFlow", "operatingCashflow", "capitalExpenditures") };
   }).reverse();
   const rev = num(ov.RevenueTTM); const pm = num(ov.ProfitMargin); const om = num(ov.OperatingMarginTTM);
+  const earn = tidyEarn(qtr.map((r) => ({ d: day(r.reportedDate) ?? "", p: day(r.fiscalDateEnding), time: timing(r.reportTime), eps: num(r.reportedEPS), est: num(r.estimatedEPS), rev: null, revEst: null })), new Date().toISOString().slice(0, 10));
   return {
-    type: "fund", id, tk, src: "alphavantage", asOf: new Date().toISOString(), ccy: String(ov.Currency || "USD"), name: ov.Name ? String(ov.Name) : undefined, shares: num(ov.SharesOutstanding),
+    type: "fund", id, tk, src: "alphavantage", earn, earnTrend: null, asOf: new Date().toISOString(), ccy: String(ov.Currency || "USD"), name: ov.Name ? String(ov.Name) : undefined, shares: num(ov.SharesOutstanding),
     ttm: { basis: "TTM", rev, gp: num(ov.GrossProfitTTM), op: rev !== null && om !== null ? rev * om : null, ni: rev !== null && pm !== null ? rev * pm : null, ebitda: num(ov.EBITDA),
       eps: num(ov.DilutedEPSTTM) ?? num(ov.EPS), fcf: fy.at(-1)?.fcf ?? null, divPs: num(ov.DividendPerShare) ?? 0 },
     bs: { date: bal[0] ? String(bal[0].fiscalDateEnding) : null, equity: num(bal[0]?.totalShareholderEquity), debt: num(bal[0]?.shortLongTermDebtTotal), cash: num(bal[0]?.cashAndShortTermInvestments) },
@@ -154,22 +189,24 @@ export async function alphaVantageFundamentals(id: string, tk: string): Promise<
   };
 }
 
-// --- Earnings calendars: next report date for many companies in one call ------------------------
+// --- Earnings calendars: recent and upcoming reports for many companies in one call --------------
+/** A calendar entry; recent ones carry actuals, upcoming ones estimates. */
+export type CalRow = EarnRow;
 export async function eodhdEarningsCalendar(tks: string[], from: string, to: string) {
   const res = obj(await createEodhd().calendar.earnings({ symbols: tks.map((t) => `${t}.US`).join(","), from, to }));
-  const out = new Map<string, { date: string; time: FundDoc["earnTime"] }>();
+  const out = new Map<string, CalRow[]>();
   for (const r of (Array.isArray(res.earnings) ? res.earnings : []) as Record<string, unknown>[]) {
     const tk = String(r.code ?? "").split(".")[0]; const d = day(r.report_date);
-    if (tk && d && (!out.has(tk) || d < out.get(tk)!.date)) out.set(tk, { date: d, time: timing(r.before_after_market) });
+    if (tk && d) { if (!out.has(tk)) out.set(tk, []); out.get(tk)!.push({ d, p: day(r.date), time: timing(r.before_after_market), eps: num(r.actual), est: num(r.estimate), rev: null, revEst: null }); }
   }
   return out;
 }
 export async function fmpEarningsCalendar(tks: string[], from: string, to: string) {
   const rows = await createFmp().earningsCalendar(from, to); const want = new Set(tks);
-  const out = new Map<string, { date: string; time: FundDoc["earnTime"] }>();
+  const out = new Map<string, CalRow[]>();
   for (const r of (Array.isArray(rows) ? rows : []) as Record<string, unknown>[]) {
     const tk = String(r.symbol ?? ""); const d = day(r.date);
-    if (want.has(tk) && d && (!out.has(tk) || d < out.get(tk)!.date)) out.set(tk, { date: d, time: null });
+    if (want.has(tk) && d) { if (!out.has(tk)) out.set(tk, []); out.get(tk)!.push({ d, p: null, time: null, eps: num(r.epsActual), est: num(r.epsEstimated), rev: num(r.revenueActual), revEst: num(r.revenueEstimated) }); }
   }
   return out;
 }

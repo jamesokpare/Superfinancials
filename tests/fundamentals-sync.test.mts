@@ -16,7 +16,13 @@ const EODHD_AAPL = {
   SharesStats: { SharesOutstanding: 14800000000 },
   Earnings: {
     Annual: { "2025-09-30": { date: "2025-09-30", epsActual: 7.0 }, "2024-09-30": { date: "2024-09-30", epsActual: 6.08 } },
-    History: { "2026-12-31": { reportDate: "2027-01-29", beforeAfterMarket: "AfterMarket", epsActual: null }, "2026-09-30": { reportDate: "2026-10-30", beforeAfterMarket: "AfterMarket", epsActual: null }, "2026-06-30": { reportDate: "2026-07-31", epsActual: 1.6 } },
+    History: {
+      "2026-12-31": { reportDate: "2027-01-29", beforeAfterMarket: "AfterMarket", epsActual: null, epsEstimate: 2.5 },
+      "2026-09-30": { reportDate: "2026-10-30", beforeAfterMarket: "AfterMarket", epsActual: null, epsEstimate: 1.78 },
+      "2026-06-30": { reportDate: "2026-07-31", beforeAfterMarket: "AfterMarket", epsActual: 1.6, epsEstimate: 1.43 },
+      "2026-03-31": { reportDate: "2026-05-01", beforeAfterMarket: "AfterMarket", epsActual: 1.65, epsEstimate: "1.62" },
+    },
+    Trend: { "2026-09-30": { date: "2026-09-30", period: "0q", epsTrendCurrent: 1.78, epsTrend7daysAgo: 1.77, epsTrend30daysAgo: 1.75, epsTrend90daysAgo: 1.7, revenueEstimateAvg: 102000000000 }, "2027-09-30": { period: "+1y", epsTrendCurrent: 8.2 } },
   },
   Financials: {
     Income_Statement: { yearly: yearly([["2025-09-30", { totalRevenue: "410000000000", grossProfit: "190000000000", operatingIncome: "130000000000", netIncome: "105000000000" }], ["2024-09-30", { totalRevenue: "391035000000", grossProfit: "180683000000", operatingIncome: "123216000000", netIncome: "93736000000" }], ["2023-09-30", { totalRevenue: "383285000000", grossProfit: "169148000000", operatingIncome: "114301000000", netIncome: "96995000000" }]]) },
@@ -38,7 +44,12 @@ globalThis.fetch = (async (input: string | URL | Request) => {
     if (url.pathname === "/api/fundamentals/AAPL.US") return json(EODHD_AAPL);
     if (url.pathname === "/api/fundamentals/CCJ.US") return json({ General: { Code: "CCJ" }, Financials: {} }); // no statements → falls back to FMP
     if (url.pathname.startsWith("/api/fundamentals/")) return json({ error: "not in plan" }, 403);
-    if (url.pathname === "/api/calendar/earnings") return json({ type: "Earnings", earnings: [{ code: "AAPL.US", report_date: "2026-10-30", before_after_market: "AfterMarket" }, { code: "CCJ.US", report_date: "2026-11-05", before_after_market: "BeforeMarket" }] });
+    if (url.pathname === "/api/calendar/earnings") return json({ type: "Earnings", earnings: [
+      { code: "AAPL.US", report_date: "2026-10-30", date: "2026-09-30", before_after_market: "AfterMarket", estimate: 1.79, actual: null },
+      { code: "CCJ.US", report_date: "2026-11-05", date: "2026-09-30", before_after_market: "BeforeMarket", estimate: 0.31, actual: null },
+      { code: "CCJ.US", report_date: "2026-10-22", date: "2026-06-30", before_after_market: "BeforeMarket", estimate: 0.2, actual: 0.27 },
+      { code: "MSFT.US", report_date: "2026-10-28", date: "2026-09-30", before_after_market: "AfterMarket", estimate: 3.6, actual: 3.72 },
+    ] });
     return json([], 404);
   }
   if (url.hostname === "financialmodelingprep.com") {
@@ -50,6 +61,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
     if (p === "/balance-sheet-statement") return json([{ date: "2025-12-31", totalAssets: 11000000000, totalDebt: 1500000000, totalStockholdersEquity: 7000000000, cashAndShortTermInvestments: 600000000 }]);
     if (p === "/cash-flow-statement") return json([{ date: "2025-12-31", freeCashFlow: 800000000 }]);
     if (p === "/income-statement-ttm") return json({ "Error Message": "Premium" }, 402);
+    if (p === "/earnings") return json([{ symbol: "CCJ", date: "2026-07-24", epsActual: 0.24, epsEstimated: 0.22, revenueActual: 790000000, revenueEstimated: 760000000 }, { symbol: "CCJ", date: "2026-11-05", epsActual: null, epsEstimated: 0.3, revenueActual: null, revenueEstimated: 900000000 }]);
     return json([]);
   }
   return json({ error: "not mocked" }, 404);
@@ -77,6 +89,27 @@ t("FMP: shares from market cap / price, growth from FY", c.shares === 34.8e9 / 8
 t("earnings calendar sets CCJ date and time", c.nextEarn === "2026-11-05" && c.earnTime === "Before open", [c.nextEarn, c.earnTime]);
 t("company with no data anywhere reported as failed", r.failed.some((f) => f.tk === "NVDA"), r.failed);
 t("meta note", /Fundamentals sync 2026-10-29: 2 companies refreshed/.test(String((store.dump().fund.find((d) => d.id === "_meta")?.data as { note?: string }).note)), r.note);
+
+// --- earnings ---
+const ae = a.earn ?? [];
+t("EODHD earnings: past reports with actual and estimate, oldest first", JSON.stringify(ae.slice(0, 2).map((r) => [r.d, r.eps, r.est])) === '[["2026-05-01",1.65,1.62],["2026-07-31",1.6,1.43]]', ae);
+t("EODHD earnings: only the next upcoming report kept, with calendar estimate merged", ae.length === 3 && ae[2].d === "2026-10-30" && ae[2].eps === null && ae[2].est === 1.79 && ae[2].time === "After close", ae[2]);
+t("EODHD earnings: revenue estimate from the trend for the next report", ae[2].revEst === 102e9, ae[2]);
+t("EODHD consensus trend for revisions", a.earnTrend?.now === 1.78 && a.earnTrend?.d30 === 1.75 && a.earnTrend?.d90 === 1.7, a.earnTrend);
+const ce = c.earn ?? [];
+t("FMP earnings with revenue, plus calendar actuals", JSON.stringify(ce.map((r) => [r.d, r.eps, r.est, r.rev])) === '[["2026-07-24",0.24,0.22,790000000],["2026-10-22",0.27,0.2,null],["2026-11-05",null,0.31,null]]', ce);
+t("FMP upcoming report keeps its revenue estimate", ce[2]?.revEst === 9e8 && ce[2]?.time === "Before open", ce[2]);
+t("calendar actuals merged into an existing doc (MSFT)", docs["EQ.MSFT"]?.earn?.[0]?.eps === 3.72 && docs["EQ.MSFT"]?.earn?.[0]?.est === 3.6, docs["EQ.MSFT"]);
+t("calendar creates no doc for a company without one (NVDA)", !docs["EQ.NVDA"]);
+
+// A company whose report date has passed is refetched first, even when its data is fresh.
+calls.length = 0;
+const s2 = memoryStore({ fund: [
+  { id: "EQ.AAPL", data: { ...a, asOf: "2026-10-26T05:40:00Z", nextEarn: "2026-10-27" } as never },
+  { id: "EQ.CCJ", data: { ...c, asOf: "2026-10-01T05:40:00Z" } as never },
+] });
+const r2 = await runFundamentalsSync({ store: s2, now: NOW, only: ["AAPL", "CCJ"], providers: ["eodhd"], budget: 1 });
+t("reported-since-last-fetch company refreshed first", r2.updated[0]?.tk === "AAPL" || r2.failed[0]?.tk === "AAPL", r2);
 
 // Dry run writes nothing; no providers writes nothing.
 const dry = memoryStore(); await runFundamentalsSync({ store: dry, now: NOW, only: ["AAPL"], providers: ["eodhd"], dryRun: true });
