@@ -69,6 +69,8 @@ map to low / medium / high effort.
 | `src/lib/claude-shim/` | `window.claude.use()` rebuilt: `db` (Firestore-style API on a Supabase table), `user`, `room` (Realtime), `assets` (Storage), `downloads`, `sample` (AI) |
 | `src/app/login/` | Sign in, sign up, email link |
 | `src/app/api/ai/` | Server-side Claude call for `sample` |
+| `src/lib/providers/` | Clients for the external market-data, news and economic APIs |
+| `src/app/api/providers/` | Data-connection status and health check |
 | `supabase/migrations/` | Schema and row-level security |
 | `supabase/seed-data/` | Shared documents exported from the artifact's database |
 | `public/i18n/` | Interface translations (zh, ja, ko, fr, de, es, pt) |
@@ -85,6 +87,50 @@ artifact:
   each user writes only under their own id (`posts/<my-id>/…`).
 - `data/users/<id>/…`: private to that user.
 
+## Data connections
+
+Server-side clients for every external data provider live in
+`src/lib/providers/`. Each reads its key from an environment variable with
+the **same name as the GitHub repository secret**, so production only needs
+those secrets set. None are `NEXT_PUBLIC_`, so keys never reach the browser.
+
+| Env var | Provider | Client | Covers |
+|---|---|---|---|
+| `AFRICA_API_KEY` | [Africa API](https://africa-api.com) | `createAfricaApi()` | 54 countries: indicators, exchanges, tickers, FX, trade, elections |
+| `ALPHAVANTAGE_API_KEY` | [Alpha Vantage](https://www.alphavantage.co/documentation/) | `createAlphaVantage()` | Quotes, history, FX, fundamentals, economics, news sentiment |
+| `COMPANIES_HOUSE_API_KEY` | [Companies House](https://developer-specs.company-information.service.gov.uk/) | `createCompaniesHouse()` | UK companies, officers, filings, PSCs |
+| `CURRENTS_API_KEY` | [Currents API](https://currentsapi.services/en/docs/) | `createCurrents()` (official SDK `currentsapi`) | News |
+| `DATABASE_URL` | Postgres / Supabase | `sql()` from `@/lib/db/postgres` (`postgres` package) | Direct SQL |
+| `EODHD_API_KEY` | [EODHD](https://eodhd.com/financial-apis/) | `createEodhd()` (official SDK `eodhd`) | Global EOD/intraday/live prices, fundamentals, calendars, news |
+| `EXCHANGERATE_API_KEY` | [ExchangeRate-API](https://www.exchangerate-api.com/docs/overview) | `createExchangeRate()` | FX rates, 160+ currencies |
+| `FMP_API_KEY` | [Financial Modeling Prep](https://site.financialmodelingprep.com/developer/docs) | `createFmp()` | Quotes, statements, ratios, history (stable API) |
+| `FRED_API_KEY` | [FRED](https://fred.stlouisfed.org/docs/api/fred/) | `createFred()` | Economic time series |
+| `MANSA_API_KEY` | [Mansa API](https://mansaapi.com) | `createMansa()` | African exchanges, stocks, indices, movers |
+| `MARKETAUX_API_KEY` | [Marketaux](https://www.marketaux.com/documentation) | `createMarketaux()` | News with entity sentiment |
+| `MARKETSTACK_API_KEY` | [Marketstack](https://marketstack.com/documentation_v2) | `createMarketstack()` | Global EOD/intraday prices (v2) |
+| `MYSTOCKS_AFRICA_API_KEY` | [MyStocks Africa](https://mystocks.africa/partners/docs/market-data) | `createMyStocksAfrica()` | African quotes, candles, companies, news |
+| `NEWSAPI_AI_KEY` | [NewsAPI.ai](https://newsapi.ai/documentation) | `createNewsApiAi()` (official SDK `eventregistry`) | News articles and events |
+| `NGX_PULSE_API_KEY` | [NGX Pulse](https://ngxpulse.ng/api) | `createNgxPulse()` | NGX equities, market summary, NASD OTC |
+
+```ts
+import { createFmp, createFred, createNgxPulse } from "@/lib/providers";
+
+const cpi = await createFred().observations("CPIAUCSL", { units: "pc1" });
+const ngx = await createNgxPulse().stocks();
+// Cache in Next.js by passing fetch options to the REST clients:
+const fmp = createFmp(undefined, { init: { next: { revalidate: 300 } } });
+```
+
+Every client has a `ping()`. To check which keys are set and working:
+
+```bash
+npm run providers:check
+```
+
+or, signed in, `GET /api/providers` (configured or not) and
+`GET /api/providers?check=1` (pings each). Errors are `ProviderError` /
+`MissingKeyError` with key values redacted.
+
 ## Scripts
 
 | Command | What it does |
@@ -94,3 +140,4 @@ artifact:
 | `npm test` | Row-level security tests (in-memory Postgres) and database-shim tests |
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 | `npm run seed` | Load `supabase/seed-data` into Supabase |
+| `npm run providers:check` | Ping every configured data connection |
