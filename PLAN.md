@@ -49,5 +49,6 @@ We move it in stages so the app keeps working at every step.
 ## Phase 5: billing, data, deploy
 
 - Stripe for seats (Trial, Public $90, Private $45, Full $135).
-- Wire the provider clients in `src/lib/providers/` (added) into the existing `Provider` layer, replacing simulated data page by page.
+- ✅ Real end-of-day prices from the provider APIs flow into the existing `Provider` layer (`src/lib/market/`, daily cron).
+- Next for data: load history per instrument on demand instead of the whole `mkt` collection; real fundamentals (FMP/EODHD), news (Marketaux, NewsAPI.ai, Currents) and UK company data (Companies House) for the pages that still say "no provider connected".
 - Deploy to Vercel; Supabase migrations from CI.

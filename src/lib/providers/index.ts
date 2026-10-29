@@ -74,7 +74,7 @@ export const CONNECTIONS: Connection[] = [
 export const isConfigured = (c: Pick<Connection, "env">) => !!envKey(c.env);
 
 /** Replaces any configured secret that appears in a message, e.g. inside an SDK's error URL. */
-function scrub(msg: string) {
+export function scrub(msg: string) {
   for (const c of CONNECTIONS) {
     const v = envKey(c.env);
     if (v && v.length >= 6) msg = msg.split(v).join("***");

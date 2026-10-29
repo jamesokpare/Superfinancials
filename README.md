@@ -71,6 +71,8 @@ map to low / medium / high effort.
 | `src/app/api/ai/` | Server-side Claude call for `sample` |
 | `src/lib/providers/` | Clients for the external market-data, news and economic APIs |
 | `src/app/api/providers/` | Data-connection status and health check |
+| `src/lib/market/` | Market sync: instrument → provider map, fetchers, writer |
+| `src/app/api/cron/market-sync/` | Scheduled sync endpoint (Vercel Cron) |
 | `supabase/migrations/` | Schema and row-level security |
 | `supabase/seed-data/` | Shared documents exported from the artifact's database |
 | `public/i18n/` | Interface translations (zh, ja, ko, fr, de, es, pt) |
@@ -131,6 +133,53 @@ or, signed in, `GET /api/providers` (configured or not) and
 `GET /api/providers?check=1` (pings each). Errors are `ProviderError` /
 `MissingKeyError` with key values redacted.
 
+## Live market data
+
+The app's Provider layer still generates every series, but real prices now
+replace the simulated ones wherever a provider has them. A server-side sync
+(`src/lib/market/`) pulls end-of-day prices from the configured APIs and
+writes them into the `mkt` collection the app already reads. In the browser
+`liveBuild()` splices them onto the simulated history and labels them
+**REAL** with their source; anything not covered keeps its **SIM** label.
+
+| Instruments | Sources, in order of preference |
+|---|---|
+| U.S. stocks and ETFs (98) | EODHD → FMP → Marketstack → Alpha Vantage |
+| Global indices (27) | EODHD → FMP; Cboe volatility indices also from FRED |
+| FX (25) and the Dollar Index | ExchangeRate-API → EODHD → FMP → FRED H.10 → Alpha Vantage; DXY computed from its six components |
+| Government yields (76) | FRED for U.S. Treasuries, EODHD for other curves |
+| Credit spreads, SOFR, economic indicators | FRED |
+| Commodities | FMP futures; FRED spot WTI, Brent and Henry Hub; EODHD spot gold |
+| Crypto | EODHD → FMP → Alpha Vantage |
+| NGX All-Share and the data desk's NGX listings | NGX Pulse → Mansa → MyStocks Africa → Africa API |
+
+Each run writes:
+- `mkt/d-<date>`: that day's closes (`[close, change, date, source]` per instrument)
+- `mkt/h-<id>@<source>`: daily history (FRED every week; metered providers
+  backfill up to `MARKET_HISTORY_BUDGET` instruments per run)
+- `mkt/_meta`: a one-line summary shown on the Sources panel
+- `adm_inst/AD.NG.*`: today's NGX close appended to each desk listing
+
+Day documents older than 35 days are folded into the history documents, so the
+collection every browser loads stays small.
+
+**Schedule.** `vercel.json` runs `GET /api/cron/market-sync` at 22:30 UTC on
+weekdays (after the U.S. close). Set `CRON_SECRET` in the Vercel project, plus
+`SUPABASE_SERVICE_ROLE_KEY` (or `DATABASE_URL`) so the sync can write.
+
+**By hand:**
+
+```bash
+npm run market:sync -- --dry-run
+```
+
+```bash
+npm run market:sync
+```
+
+`--only=EQ.AAPL,FX.USDNGN,NGX` limits a run to some instruments. The output
+lists, per provider, how many instruments it resolved and any error.
+
 ## Scripts
 
 | Command | What it does |
@@ -141,3 +190,4 @@ or, signed in, `GET /api/providers` (configured or not) and
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 | `npm run seed` | Load `supabase/seed-data` into Supabase |
 | `npm run providers:check` | Ping every configured data connection |
+| `npm run market:sync` | Pull end-of-day prices from the providers into the app (`-- --dry-run` to preview) |

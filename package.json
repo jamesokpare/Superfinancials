@@ -9,8 +9,9 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "seed": "node scripts/seed.mjs",
-    "test": "node tests/rls.test.mjs && tsx tests/db-shim.test.ts && tsx --conditions=react-server tests/providers.test.mts",
-    "providers:check": "tsx --conditions=react-server scripts/check-providers.mts"
+    "test": "node tests/rls.test.mjs && tsx tests/db-shim.test.ts && tsx --conditions=react-server tests/providers.test.mts && tsx --conditions=react-server tests/market-sync.test.mts",
+    "providers:check": "tsx --conditions=react-server scripts/check-providers.mts",
+    "market:sync": "tsx --conditions=react-server scripts/market-sync.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
