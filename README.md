@@ -75,6 +75,7 @@ map to low / medium / high effort.
 | `src/app/api/cron/market-sync/` | Scheduled sync endpoint (Vercel Cron) |
 | `src/lib/news/`, `src/app/api/cron/news-sync/` | News sync and its scheduled endpoint |
 | `public/legacy/news-feed.js` | Adds provider headlines to the legacy news pages |
+| `src/lib/fundamentals/`, `public/legacy/fundamentals.js` | Reported fundamentals: sync and the browser add-on |
 | `supabase/migrations/` | Schema and row-level security |
 | `supabase/seed-data/` | Shared documents exported from the artifact's database |
 | `public/i18n/` | Interface translations (zh, ja, ko, fr, de, es, pt) |
@@ -210,6 +211,32 @@ as before.
 npm run news:sync -- --dry-run
 ```
 
+## Fundamentals
+
+Security pages, the screener and valuation comps now use **reported
+financials** for the 64 U.S. equities instead of figures generated from model
+parameters. A fundamentals sync (`src/lib/fundamentals/`) fetches, per
+company, five fiscal years of income statement, balance sheet and cash flow,
+trailing-twelve-month figures, shares outstanding, dividends, revenue growth,
+forward EPS and the next earnings date, from EODHD (one call per company), then
+Financial Modeling Prep, then Alpha Vantage. Results go to `fund/<id>`.
+
+In the browser, `public/legacy/fundamentals.js` wraps the app's `fund()`:
+valuation ratios (P/E, forward P/E, P/S, P/B, EV/EBITDA, dividend and FCF
+yield) are recomputed from the live price; statements reported in another
+currency are converted to USD at the app's FX rate. Pages say where the
+figures come from (Financials tab, key stats, valuation and screener notes).
+Companies without stored data keep their simulated figures and labels.
+
+**Schedule.** `GET /api/cron/fundamentals-sync` runs daily at 05:40 UTC and
+refreshes up to `FUND_BUDGET` companies whose data is missing or older than
+`FUND_REFRESH_DAYS`; next earnings dates for all companies come from one bulk
+calendar call each run. To load everything at once:
+
+```bash
+npm run fundamentals:sync -- --budget=64
+```
+
 ## Scripts
 
 | Command | What it does |
@@ -222,3 +249,4 @@ npm run news:sync -- --dry-run
 | `npm run providers:check` | Ping every configured data connection |
 | `npm run market:sync` | Pull end-of-day prices from the providers into the app (`-- --dry-run` to preview) |
 | `npm run news:sync` | Pull recent headlines from the news providers (`-- --dry-run` to preview) |
+| `npm run fundamentals:sync` | Refresh reported financials (`-- --dry-run`, `-- --budget=64`) |

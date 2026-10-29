@@ -39,9 +39,9 @@ const MAP: Record<string, Source[]> = {};
 const add = (id: string, ...src: Source[]) => { (MAP[id] ??= []).push(...src); };
 
 // --- U.S. equities and ETFs -----------------------------------------------
-const EQ = "AAPL MSFT NVDA AVGO ORCL ADBE CRM AMD INTC GOOGL META NFLX DIS T VZ AMZN TSLA HD MCD NKE WMT COST PG KO PEP JPM BAC GS MS V UNH LLY JNJ MRK PFE ABBV XOM CVX CAT BA GE NEE DUK LIN SHW PLD AMT FCX SCCO NEM AA ALB NUE MOS CF COP OXY VLO SLB CCJ ADM BG DE HSY";
+export const US_EQUITIES = "AAPL MSFT NVDA AVGO ORCL ADBE CRM AMD INTC GOOGL META NFLX DIS T VZ AMZN TSLA HD MCD NKE WMT COST PG KO PEP JPM BAC GS MS V UNH LLY JNJ MRK PFE ABBV XOM CVX CAT BA GE NEE DUK LIN SHW PLD AMT FCX SCCO NEM AA ALB NUE MOS CF COP OXY VLO SLB CCJ ADM BG DE HSY";
 const ETF = "XLK XLV XLF XLE XLI XLY XLP XLU XLB XLRE XLC IWF IWB IWD IWP IWR IWS IWO IWM IWN SHY IEF TLT TIP MUB LQD HYG CWB AGG BND EMB FXE GLD USO";
-for (const [pre, list] of [["EQ", EQ], ["ET", ETF]] as const) {
+for (const [pre, list] of [["EQ", US_EQUITIES], ["ET", ETF]] as const) {
   for (const tk of list.split(" ")) {
     add(`${pre}.${tk}`, { p: "eodhd", s: `${tk}.US` }, { p: "fmp", s: tk }, { p: "marketstack", s: tk }, { p: "alphavantage", s: tk });
   }
