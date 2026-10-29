@@ -79,6 +79,8 @@ map to low / medium / high effort.
 | `public/legacy/history.js` | Loads each instrument's price history on demand |
 | `public/legacy/earnings.js` | Reported earnings and consensus estimates in calendars, briefs and movers |
 | `src/lib/registry/`, `src/lib/ukreg/`, `src/app/api/companies/`, `src/app/api/uk-companies/`, `public/legacy/registry.js` | Company registry: data-desk entries, Companies House (UK) and GLEIF (global) |
+| `src/lib/macro/`, `src/app/api/cron/macro-sync/` | Daily sync of official macro data, calendars and SEC Form D private placements |
+| `public/legacy/realdata.js` | Real-data mode: page adjustments (the mode itself is in `superfinancials.js`, marked "Next.js port") |
 | `supabase/migrations/` | Schema and row-level security |
 | `supabase/seed-data/` | Shared documents exported from the artifact's database |
 | `public/i18n/` | Interface translations (zh, ja, ko, fr, de, es, pt) |
@@ -311,13 +313,69 @@ officers, owners, filings and previous-names cells, separate fields with `|`
 and entries with `;`. A row with the same country and registration number as an
 existing entry updates it.
 
+## Real-data mode
+
+Every account sees **only real data**. The exception is the **demo workspace**
+(Sign in → "Continue with the demo workspace"), which keeps the simulator's
+sample data so the product can be shown off, labelled as before.
+
+- **Private markets.** The simulator's 35 fictional companies, their deals and
+  36 fictional funds are removed. What remains are data-desk entries (Data
+  studio) and U.S. private placements from SEC Form D (below). New users get no
+  sample fund commitments or example holdings; saved workspaces from before have
+  them removed when they load. Quarterly operating KPIs for private companies
+  are not connected, so those views say so instead of showing model figures.
+- **Public markets.** Every instrument is a real security, but some had only
+  simulated prices. Lists, tables, search, heatmaps and the overview now show only
+  instruments with real prices (or prices derived from a real series, e.g. Treasury
+  bond prices from real yields); the rest are hidden, and appear as soon as a
+  provider covers them. The top-bar chip reads "Real data".
+- **Calendars** keep only events from the data desk and the daily syncs, and
+  earnings dates from the fundamentals provider.
+
+So that nothing is empty, the scheduled syncs need to run (Vercel Cron, with the
+provider keys set); before the first market sync the public pages say that no
+real prices have loaded yet.
+
+## Macro data, calendars and private placements
+
+`GET /api/cron/macro-sync` (daily 05:20 UTC, `npm run macro:sync`) writes into
+the data desk's own collections, so everything appears with its source and the
+app treats it like Data studio content. It never changes documents you entered
+yourself, and a series only feeds the macro panels when you haven't supplied
+that indicator for that country.
+
+| Source | Key | What it adds | Where it shows |
+|---|---|---|---|
+| World Bank | none | 10 annual indicators for ~105 countries (GDP growth, GDP, GDP per head, inflation, unemployment, current account, exports, FDI, government debt, population) | Country data |
+| BIS | none | Central-bank policy rates, ~40 countries, monthly | Country data, macro panels (policy rate) |
+| ECB | none | Euro-area HICP inflation and deposit rate | Country data, macro panels |
+| OECD | none | Monthly CPI inflation, ~37 economies | Country data, macro panels (CPI) |
+| FRED | `FRED_API_KEY` | U.S. release dates (CPI, payrolls, GDP, PCE …), next 45 days | Market calendars |
+| U.S. Treasury FiscalData | none | Upcoming Treasury auctions | Market calendars |
+| FMP, else EODHD | `FMP_API_KEY` / `EODHD_API_KEY` | Economic calendar with consensus and actuals; IPOs | Market calendars |
+| FMP | `FMP_API_KEY` | Ex-dividend dates for the tracked U.S. stocks and ETFs | Market calendars |
+| SEC EDGAR (Form D) | none (set `SEC_USER_AGENT`) | U.S. private placements: issuer, sector, state, year founded, amount raised, related persons | Private companies, Deal flow |
+
+Form D is read from EDGAR's daily index (new filings only, not amendments) within
+a request budget (`FORMD_BUDGET`, default 250 a run), resuming where the last run
+stopped. Pooled investment funds and raises under `FORMD_MIN_SOLD` (US$1m) are
+skipped; issuers with no filing for a year are retired, and the newest 500 kept.
+The FMP and EODHD calendars depend on your plans; if an endpoint is not included,
+the run reports it and the other sources still update.
+
+Deliberately left out: IMF data (commercial reuse needs written permission),
+scraped sites (TradingEconomics, Investing.com) and proprietary series (PMIs,
+Baltic Dry, JKM). Nigerian T-bill, interbank and FMDQ rates have no free licensed
+source.
+
 ## CI and monitoring (GitHub Actions)
 
 | Workflow | When | What |
 |---|---|---|
 | **CI** (`ci.yml`) | Every push to `main` and every PR | `npm ci`, route types, lint, typecheck, tests, build. No secrets needed: tests use mocked APIs |
-| **Data dry run** (`data-dry-run.yml`) | By hand (Actions → Run workflow), or when the workflow file changes | Checks every provider key, then runs the market, news and fundamentals syncs with `--dry-run` against the real APIs using the repository secrets. Reads the database, writes nothing; budgets are kept small. Results appear in the run summary |
-| **Sync health** (`sync-health.yml`) | Daily 09:17 UTC, or by hand | Fails if a sync is stale (prices > 80 h, news > 26 h, fundamentals > 26 h) or its last run produced no data. GitHub emails the repository owner about failed scheduled runs |
+| **Data dry run** (`data-dry-run.yml`) | By hand (Actions → Run workflow), or when the workflow file changes | Checks every provider key, then runs the market, news, fundamentals and macro syncs with `--dry-run` against the real APIs using the repository secrets. Reads the database, writes nothing; budgets are kept small. Results appear in the run summary |
+| **Sync health** (`sync-health.yml`) | Daily 09:17 UTC, or by hand | Fails if a sync is stale (prices > 80 h, news > 26 h, fundamentals > 26 h, macro data > 50 h) or its last run produced no data. GitHub emails the repository owner about failed scheduled runs |
 
 The dry run and health check need the `DATABASE_URL` repository secret (already
 set); the dry run also uses the provider secrets.
@@ -335,4 +393,5 @@ set); the dry run also uses the provider secrets.
 | `npm run market:sync` | Pull end-of-day prices from the providers into the app (`-- --dry-run` to preview) |
 | `npm run news:sync` | Pull recent headlines from the news providers (`-- --dry-run` to preview) |
 | `npm run fundamentals:sync` | Refresh reported financials (`-- --dry-run`, `-- --budget=64`) |
+| `npm run macro:sync` | Pull macro data, calendars and Form D filings (`-- --dry-run`, `-- --only=bis,ecb`) |
 | `npm run sync:health` | Check that each sync ran recently and produced data (exit 1 if not) |
