@@ -1786,3 +1786,9 @@ html:is(:lang(de),:lang(fr),:lang(es),:lang(pt)) :is(.vx-h1,.vx-h2,h1,h2,h3,h4){
 
 /* Next.js port: reported fundamentals (public/legacy/fundamentals.js) */
 .callout.fd-ok{background:var(--proof-bg);border-color:color-mix(in srgb,var(--proof) 25%,var(--line))}
+
+/* Next.js port: UK company register (public/legacy/ukreg.js) */
+.uk-f{display:flex;gap:8px;padding:16px 20px}
+.uk-f .inp{flex:1;min-width:0}
+.uk-co .kv dd{white-space:normal}
+.uk-co .kv .sub{white-space:normal;max-width:none}

@@ -77,6 +77,7 @@ map to low / medium / high effort.
 | `public/legacy/news-feed.js` | Adds provider headlines to the legacy news pages |
 | `src/lib/fundamentals/`, `public/legacy/fundamentals.js` | Reported fundamentals: sync and the browser add-on |
 | `public/legacy/earnings.js` | Reported earnings and consensus estimates in calendars, briefs and movers |
+| `src/lib/ukreg/`, `src/app/api/uk-companies/`, `public/legacy/ukreg.js` | UK company register (Companies House) |
 | `supabase/migrations/` | Schema and row-level security |
 | `supabase/seed-data/` | Shared documents exported from the artifact's database |
 | `public/i18n/` | Interface translations (zh, ja, ko, fr, de, es, pt) |
@@ -257,6 +258,23 @@ calendar call each run. To load everything at once:
 ```bash
 npm run fundamentals:sync -- --budget=64
 ```
+
+## UK company register
+
+**Private markets › Companies & deals › UK company register** searches the
+official UK register (Companies House) by name or company number and opens a
+company's record: status, type, incorporation, registered office, nature of
+business (SIC codes with their division names), accounts and confirmation
+statement deadlines (with overdue flags), previous names, officers, people with
+significant control, recent filings (with links to the public PDFs) and
+charges.
+
+Records are fetched live through `GET /api/uk-companies?q=` and
+`GET /api/uk-companies/<number>` (`src/lib/ukreg/`), for signed-in users only,
+so `COMPANIES_HOUSE_API_KEY` stays on the server. Results are cached in memory
+for an hour. Data-desk private companies with a company number (`chNo`) show a
+register panel on their profile; UK desk companies without one get a "Find on
+the UK register" button.
 
 ## Scripts
 

@@ -16,7 +16,7 @@ import { createSample } from "./sample";
 declare global {
   interface Window {
     claude?: { use(name: string): Promise<unknown> };
-    sfAuth?: { configured: boolean; goLogin(): void; signOut(): Promise<void> };
+    sfAuth?: { configured: boolean; goLogin(): void; signOut(): Promise<void>; fetch(url: string, init?: RequestInit): Promise<Response> };
   }
 }
 
@@ -64,5 +64,13 @@ export function installClaudeShim() {
       location.href = `/login?next=${encodeURIComponent(next)}`;
     },
     async signOut() { await sb.auth.signOut(); },
+    /** fetch() to this app's API with the user's access token; a 401 when signed out. */
+    async fetch(url: string, init: RequestInit = {}) {
+      const { data } = await sb.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return Response.json({ code: "not_granted", message: "Sign in to continue" }, { status: 401 });
+      const headers = new Headers(init.headers); headers.set("authorization", `Bearer ${token}`);
+      return fetch(url, { ...init, headers });
+    },
   });
 }
