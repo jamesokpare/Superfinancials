@@ -59,7 +59,7 @@ We move it in stages so the app keeps working at every step.
 - ✅ Provider headlines on Market news, briefs and security pages (`src/lib/news/`).
 - ✅ Reported fundamentals for U.S. equities and NGX listings (`src/lib/fundamentals/`).
 - ✅ Reported earnings and consensus estimates (`public/legacy/earnings.js`).
-- ✅ UK company register page and main-search results (Companies House).
+- ✅ Company registry: UK (Companies House), global (GLEIF) and data-desk companies added in the Data studio, with main-search results.
 
 ## Remaining: verify what is wired
 
