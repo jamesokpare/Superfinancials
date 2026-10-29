@@ -62,7 +62,7 @@ map to low / medium / high effort.
 
 | Path | What it is |
 |---|---|
-| `public/legacy/superfinancials.js` | The original artifact script (≈9,300 lines), with three small patches marked "Next.js port" |
+| `public/legacy/superfinancials.js` | The original artifact script (≈9,950 lines), with small patches marked "Next.js port" |
 | `src/app/legacy.css` | The original artifact styles |
 | `src/legacy/shell.ts` | The static app shell markup the script renders into |
 | `src/components/LegacyApp.tsx` | Installs the runtime shim, then loads the script once |
@@ -93,6 +93,7 @@ artifact:
 - `mkt`, `adm_*`, `energyinfra` and other shared content: anyone can read; admins write.
 - `orgs`, `outbox`, `people`, `posts`, `likes`, `dm`, `fchat`: signed-in users read;
   each user writes only under their own id (`posts/<my-id>/…`).
+- `pk/<id>`: each person's public encryption key; signed-in users read, only the owner writes.
 - `data/users/<id>/…`: private to that user.
 
 ## Data connections
