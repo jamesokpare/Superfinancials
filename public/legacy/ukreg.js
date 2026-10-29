@@ -144,3 +144,52 @@ if (typeof PAGES !== 'undefined' && PAGES.pco) {
     } catch (e) { console.error(e); }
   };
 }
+
+/* ---------- main search box: UK register results ----------
+   Typing three or more characters in the top search box adds, after the app's
+   own results: up to three matching UK companies (fetched in the background,
+   debounced and cached, then the list refreshes) and "Search the UK register
+   for …", which opens the register page with the search run. A company
+   number opens that company directly. Shown only in the cloud version; hidden
+   if the server has no Companies House key. */
+const UKS = { cache: new Map(), timer: null, off: false, login: false };
+function ukLiveFetch(t) {
+  const k = t.toLowerCase(); if (UKS.cache.has(k) || UKS.off || UKS.login) return;
+  clearTimeout(UKS.timer);
+  UKS.timer = setTimeout(async () => {
+    if (UKS.cache.has(k)) return;
+    UKS.cache.set(k, { loading: true });
+    try { const r = await ukGet('/api/uk-companies?n=5&q=' + encodeURIComponent(t)); UKS.cache.set(k, { items: r.items || [], total: r.total || 0 }); }
+    catch (e) {
+      if (e && (e.code === 'not_configured' || e.code === 'offline')) UKS.off = true;
+      if (e && e.code === 'not_granted') UKS.login = true;
+      UKS.cache.set(k, { err: e && e.message || 'Search failed' });
+    }
+    if (UKS.cache.size > 100) UKS.cache.delete(UKS.cache.keys().next().value);
+    // Refresh the open dropdown if the user is still looking at this query.
+    const inp = document.getElementById('gsearch');
+    if (inp && document.activeElement === inp && inp.value.trim().toLowerCase() === k) inp.dispatchEvent(new Event('input'));
+  }, 400);
+}
+if (typeof searchItems === 'function') {
+  const _si = searchItems;
+  searchItems = function (q, opt = {}) {
+    const res = _si(q, opt);
+    try {
+      if (!opt.funcs || UKS.off || !window.sfAuth || typeof window.sfAuth.fetch !== 'function') return res;
+      const t = String(q || '').trim(); if (t.length < 3) return res;
+      const row = (a, b, c) => `<div class="a">${a}</div><div class="b">${b}</div>${c ? `<div class="c">${c}</div>` : ''}`;
+      const num = ukNum(t);
+      if (num) return [...res, { kind: 'ukreg', html: row('UK register', `Open company ${esc(num)}`, 'Companies House'), run: () => go('ukreg', num) }];
+      const k = t.toLowerCase(); const hit = UKS.cache.get(k); const extra = [];
+      if (hit && hit.items) hit.items.slice(0, 3).forEach(x => extra.push({ kind: 'ukreg', html: row(esc(x.name), 'UK company', `${esc(x.number)} · ${esc(String(x.status || '').replace(/-/g, ' '))}${x.address ? ' · ' + esc(x.address) : ''}`), run: () => go('ukreg', x.number) }));
+      // Skip the network for an exact ticker or page code: the user is not looking for a company.
+      // Cancelling also drops a lookup still pending from an earlier keystroke (e.g. "aap" before "aapl").
+      const exact = !!(res[0] && res[0].s >= 100);
+      if (!hit && !exact) ukLiveFetch(t); else if (!hit) clearTimeout(UKS.timer);
+      const status = UKS.login ? 'Sign in to search the register' : hit && hit.items ? `${nf(hit.total, 0)} matches on Companies House` : hit && hit.err ? esc(hit.err) : exact ? 'Companies House' : 'Searching Companies House…';
+      extra.push({ kind: 'ukreg', html: row('UK register', `Search for “${esc(t)}”`, status), run: () => { UK.q = t; UK.auto = true; go('ukreg'); } });
+      return [...res, ...extra];
+    } catch (e) { console.error(e); return res; }
+  };
+}

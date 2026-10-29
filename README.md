@@ -276,6 +276,13 @@ for an hour. Data-desk private companies with a company number (`chNo`) show a
 register panel on their profile; UK desk companies without one get a "Find on
 the UK register" button.
 
+The **main search box** also searches the register: after three or more
+characters it lists up to three matching UK companies (fetched in the
+background, debounced and cached) and a "Search for …" entry that opens the
+register page with the search run; a company number opens that company
+directly. Exact tickers and page codes don't trigger a lookup, and the entries
+are hidden in browser-only mode or when the server has no Companies House key.
+
 ## Scripts
 
 | Command | What it does |
