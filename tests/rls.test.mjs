@@ -55,6 +55,10 @@ await t("docs_merge missing doc", (await as(B, rows(`select docs_merge('orgs/${B
 await t("user cannot self-promote", (await as(B, rows(`update profiles set is_admin=true where id='${B}'`))).startsWith("ERR 42501"), true);
 await t("user can rename self", await as(B, n(`update profiles set name='Bob' where id='${B}'`)), 1);
 await t("user cannot rename other", await as(B, n(`update profiles set name='X' where id='${A}'`)), 0);
+await t("B writes own public key", await as(B, n(`insert into docs(path,parent,id,data) values ('pk/${B}','pk','${B}','{"x":"1"}')`)), 1);
+await t("B cannot write A public key", (await as(B, rows(`insert into docs(path,parent,id,data) values ('pk/${A}','pk','${A}','{}')`))).startsWith("ERR"), true);
+await t("signed-in reads public keys", await as(A, rows("select path from docs where parent='pk'")), [{ path: `pk/${B}` }]);
+await t("anon cannot read public keys", await as(null, rows("select path from docs where parent='pk'")), []);
 await t("is_admin()", await as(A, rows("select public.is_admin() as a")), [{ a: true }]);
 
 console.log(fails ? `${fails} FAILED` : "all passed");
