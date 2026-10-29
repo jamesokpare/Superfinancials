@@ -59,6 +59,11 @@ await t("B writes own public key", await as(B, n(`insert into docs(path,parent,i
 await t("B cannot write A public key", (await as(B, rows(`insert into docs(path,parent,id,data) values ('pk/${A}','pk','${A}','{}')`))).startsWith("ERR"), true);
 await t("signed-in reads public keys", await as(A, rows("select path from docs where parent='pk'")), [{ path: `pk/${B}` }]);
 await t("anon cannot read public keys", await as(null, rows("select path from docs where parent='pk'")), []);
+await t("admin adds a registry company", await as(A, n(`insert into docs(path,parent,id,data) values ('adm_reg/ng-rc123','adm_reg','ng-rc123','{"name":"X"}')`)), 1);
+await t("non-admin cannot add a registry company", (await as(B, rows(`insert into docs(path,parent,id,data) values ('adm_reg/ng-rc999','adm_reg','ng-rc999','{}')`))).startsWith("ERR"), true);
+await t("non-admin cannot edit a registry company", await as(B, n(`update docs set data='{"name":"Y"}' where path='adm_reg/ng-rc123'`)), 0);
+await t("non-admin cannot delete a registry company", await as(B, n(`delete from docs where path='adm_reg/ng-rc123'`)), 0);
+await t("anyone reads the registry", await as(null, rows("select path from docs where parent='adm_reg'")), [{ path: "adm_reg/ng-rc123" }]);
 await t("is_admin()", await as(A, rows("select public.is_admin() as a")), [{ a: true }]);
 
 console.log(fails ? `${fails} FAILED` : "all passed");

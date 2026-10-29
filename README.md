@@ -78,7 +78,7 @@ map to low / medium / high effort.
 | `src/lib/fundamentals/`, `public/legacy/fundamentals.js` | Reported fundamentals: sync and the browser add-on |
 | `public/legacy/history.js` | Loads each instrument's price history on demand |
 | `public/legacy/earnings.js` | Reported earnings and consensus estimates in calendars, briefs and movers |
-| `src/lib/ukreg/`, `src/app/api/uk-companies/`, `public/legacy/ukreg.js` | UK company register (Companies House) |
+| `src/lib/registry/`, `src/lib/ukreg/`, `src/app/api/companies/`, `src/app/api/uk-companies/`, `public/legacy/registry.js` | Company registry: data-desk entries, Companies House (UK) and GLEIF (global) |
 | `supabase/migrations/` | Schema and row-level security |
 | `supabase/seed-data/` | Shared documents exported from the artifact's database |
 | `public/i18n/` | Interface translations (zh, ja, ko, fr, de, es, pt) |
@@ -120,6 +120,7 @@ those secrets set. None are `NEXT_PUBLIC_`, so keys never reach the browser.
 | `MYSTOCKS_AFRICA_API_KEY` | [MyStocks Africa](https://mystocks.africa/partners/docs/market-data) | `createMyStocksAfrica()` | African quotes, candles, companies, news |
 | `NEWSAPI_AI_KEY` | [NewsAPI.ai](https://newsapi.ai/documentation) | `createNewsApiAi()` (official SDK `eventregistry`) | News articles and events |
 | `NGX_PULSE_API_KEY` | [NGX Pulse](https://ngxpulse.ng/api) | `createNgxPulse()` | NGX equities, market summary, NASD OTC |
+| (no key) | [GLEIF](https://www.gleif.org/en/lei-data/gleif-api) | `createGleif()` | Legal entities with an LEI worldwide: registration numbers, registries, parents |
 
 ```ts
 import { createFmp, createFred, createNgxPulse } from "@/lib/providers";
@@ -268,29 +269,47 @@ calendar call each run. To load everything at once:
 npm run fundamentals:sync -- --budget=64
 ```
 
-## UK company register
+## Company registry (global)
 
-**Private markets › Companies & deals › UK company register** searches the
-official UK register (Companies House) by name or company number and opens a
-company's record: status, type, incorporation, registered office, nature of
-business (SIC codes with their division names), accounts and confirmation
-statement deadlines (with overdue flags), previous names, officers, people with
-significant control, recent filings (with links to the public PDFs) and
-charges.
+**Private markets › Companies & deals › Company registry** searches three
+sources at once and lists them together, each labelled with where it came from:
 
-Records are fetched live through `GET /api/uk-companies?q=` and
-`GET /api/uk-companies/<number>` (`src/lib/ukreg/`), for signed-in users only,
-so `COMPANIES_HOUSE_API_KEY` stays on the server. Results are cached in memory
-for an hour. Data-desk private companies with a company number (`chNo`) show a
-register panel on their profile; UK desk companies without one get a "Find on
-the UK register" button.
+| Source | Coverage | How |
+|---|---|---|
+| Data desk | Companies you add in the Data studio | Shared database (`adm_reg`), searched in the browser |
+| Companies House | UK, live | `GET /api/uk-companies?q=`, `GET /api/uk-companies/<number>` (`src/lib/ukreg/`, needs `COMPANIES_HOUSE_API_KEY`) |
+| GLEIF | ~2.9M legal entities with an LEI in 200+ countries, live | `GET /api/companies?q=&cc=`, `GET /api/companies/lei/<LEI>` (`src/lib/registry/`, no key) |
 
-The **main search box** also searches the register: after three or more
-characters it lists up to three matching UK companies (fetched in the
-background, debounced and cached) and a "Search for …" entry that opens the
-register page with the search run; a company number opens that company
-directly. Exact tickers and page codes don't trigger a lookup, and the entries
-are hidden in browser-only mode or when the server has no Companies House key.
+A country filter narrows the search (the UK register is skipped for other
+countries), and an LEI typed into the search opens that company directly. A UK
+company that also has an LEI is shown once, as its UK record.
+
+- **UK records** show status, type, incorporation, registered office, SIC
+  codes, accounts and confirmation-statement deadlines, previous names,
+  officers, people with significant control, filings (with PDFs) and charges.
+- **GLEIF records** show the legal name, other names, legal and HQ addresses,
+  the local registration number and the registry that holds it, legal form,
+  status, LEI renewal, direct and ultimate parents, and subsidiaries.
+- **Data-desk records** show what you entered: registration details, officers,
+  shareholders, filings, previous names, notes and the source.
+
+The live registers are fetched through the server for signed-in users only and
+cached in memory for an hour. Old `#ukreg.<number>` links still open the UK
+record. The **main search box** lists matching data-desk companies instantly,
+up to three live matches (debounced and cached), and "Search for …"; exact
+tickers and page codes don't trigger a lookup.
+
+### Adding companies (Data studio)
+
+**Admin › Data studio › Company registry** is where you add, edit, delete and
+bulk-import companies. Only the platform owner can open the Data studio, and
+the database enforces the same rule: `adm_reg` is readable by everyone but
+writable only by admins (`profiles.is_admin`, see step 5 of the Supabase setup).
+Import takes Excel or CSV with one company per row: `name` and `country` are
+required; the template (Download template) lists every column. In the
+officers, owners, filings and previous-names cells, separate fields with `|`
+and entries with `;`. A row with the same country and registration number as an
+existing entry updates it.
 
 ## CI and monitoring (GitHub Actions)
 

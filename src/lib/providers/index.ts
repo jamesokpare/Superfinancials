@@ -30,6 +30,7 @@ export { ProviderError, MissingKeyError } from "./http";
 export { createAfricaApi } from "./africa-api";
 export { createAlphaVantage } from "./alphavantage";
 export { createCompaniesHouse } from "./companies-house";
+export { createGleif } from "./gleif";
 export { createCurrents } from "./currents";
 export { createEodhd } from "./eodhd";
 export { createExchangeRate } from "./exchangerate";

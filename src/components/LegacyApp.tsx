@@ -9,7 +9,7 @@ declare global {
 
 /**
  * Boots the original Superfinancials script (public/legacy/superfinancials.js)
- * and its add-ons (history.js, news-feed.js, fundamentals.js, earnings.js, ukreg.js) once, after installing the window.claude shim it expects. The script renders
+ * and its add-ons (history.js, news-feed.js, fundamentals.js, earnings.js, registry.js) once, after installing the window.claude shim it expects. The script renders
  * into the static shell that the page puts in #sf-root.
  */
 export function LegacyApp() {
@@ -18,7 +18,7 @@ export function LegacyApp() {
     window.__sfLegacyLoaded = true;
     installClaudeShim();
     // Ordered, non-async scripts run in sequence: the add-ons extend the main script's globals.
-    for (const src of ["/legacy/superfinancials.js", "/legacy/history.js", "/legacy/news-feed.js", "/legacy/fundamentals.js", "/legacy/earnings.js", "/legacy/ukreg.js"]) {
+    for (const src of ["/legacy/superfinancials.js", "/legacy/history.js", "/legacy/news-feed.js", "/legacy/fundamentals.js", "/legacy/earnings.js", "/legacy/registry.js"]) {
       const s = document.createElement("script");
       s.src = src;
       s.async = false;
