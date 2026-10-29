@@ -62,6 +62,7 @@ We move it in stages so the app keeps working at every step.
 - ✅ Company registry: UK (Companies House), global (GLEIF) and data-desk companies added in the Data studio, with main-search results.
 - ✅ Real-data mode: no fictional private companies or funds, and no simulated-only instruments, outside the demo workspace.
 - ✅ Second round of sources (see `docs/data-sources-research.md`): OECD CPI fix, BIS CPI, World Bank Pink Sheet and SMARD prices for commodities without a feed, Eurostat/BLS release calendars, EIA inventories, official press-release feeds in Market news, Norway and France in Company registry.
+- ✅ Third round (see `docs/data-sources-deeper-sweep.md`): fixes for the five failing feeds (OECD batches and COICOP 2018, Pink Sheet workbook, new Eurostat calendar, contact User-Agent for SEC and BLS); official rates instead of FRED (Treasury curve, NY Fed SOFR/EFFR, BoE SONIA and gilts, BoC yields and CORRA, ECB €STR); CFTC positioning; Form D pooled funds as "Funds raising now"; startup and deal news feeds.
 - ✅ Daily macro sync (`src/lib/macro/`): World Bank, BIS, ECB, OECD series; FRED, Treasury, FMP/EODHD economic, dividend and IPO calendars; SEC Form D private placements.
 
 ## Remaining: verify what is wired

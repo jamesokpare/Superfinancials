@@ -12,7 +12,9 @@
  * SEC asks for a descriptive User-Agent with a contact address and at most 10
  * requests per second; requests here are sequential and spaced. Set
  * SEC_USER_AGENT (e.g. "Superfinancials data desk ops@example.com").
- * Pooled investment funds are skipped: Form D has no performance figures for them.
+ * Pooled investment funds (hedge, private equity, venture capital funds) are read
+ * too: they become the "funds raising" list, not companies. Form D has no
+ * performance figures for them.
  */
 import { ProviderError } from "@/lib/providers/http";
 
@@ -20,6 +22,8 @@ export type FormD = {
   cik: string; accession: string; filed: string; name: string; city: string; state: string; cc: string; founded: number | null;
   industry: string; sector: string; entityType: string; firstSale: string | null; offered: number | null; sold: number | null;
   equity: boolean; people: string[]; url: string;
+  /** Pooled funds only: "Hedge Fund", "Private Equity Fund", "Venture Capital Fund", "Other Investment Fund". */
+  fundType?: string; is40Act?: boolean; minInvest?: number | null; investors?: number | null;
 };
 
 export const secUserAgent = () => process.env.SEC_USER_AGENT?.trim() || "Superfinancials data sync (https://github.com/jamesokpare/Superfinancials)";
@@ -68,6 +72,7 @@ export function parseFormD(xml: string, cik: string, accession: string, filed: s
     founded: Number.isFinite(yr) && yr > 1800 ? yr : null, industry, sector: industry in FORMD_SECTOR ? (FORMD_SECTOR[industry] ?? "") : "Unclassified", entityType: tag(iss, "entityType"),
     firstSale: /^\d{4}-\d{2}-\d{2}$/.test(first) ? first : null, offered: amount(tag(sales, "totalOfferingAmount")), sold: amount(tag(sales, "totalAmountSold")),
     equity: tag(types, "isEquityType") === "true", people,
+    ...(industry === "Pooled Investment Fund" ? (() => { const fi = section(section(off, "industryGroup"), "investmentFundInfo"); const inv = section(off, "investors"); const n = Number(tag(inv, "totalNumberAlreadyInvested")); return { fundType: tag(fi, "investmentFundType") || "Other Investment Fund", is40Act: tag(fi, "is40Act") === "true", minInvest: amount(tag(off, "minimumInvestmentAccepted")), investors: tag(inv, "totalNumberAlreadyInvested") && Number.isFinite(n) ? n : null }; })() : {}),
     url: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accession.replace(/-/g, "")}/`,
   };
 }

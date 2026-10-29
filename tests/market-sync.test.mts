@@ -32,7 +32,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   if (url.hostname === "api.stlouisfed.org") {
     const id = url.searchParams.get("series_id");
     if (id === "PAYEMS") return json({ observations: [{ date: "2026-08-01", value: "-12" }, { date: "2026-09-01", value: "-35" }] });
-    if (id === "DGS10") return json({ observations: [{ date: "2026-10-27", value: "4.01" }, { date: "2026-10-28", value: "." }] });
+    if (id === "UNRATE") return json({ observations: [{ date: "2026-08-01", value: "4.3" }, { date: "2026-09-01", value: "." }] });
     return json({ observations: [] });
   }
   if (url.hostname === "ngxpulse.ng") {
@@ -56,7 +56,7 @@ const seed = {
     { id: "AD.NG.NOPE", data: { arr: ["d", "c"], d: ["2026-10-27"], c: [10], gen: "g1", parts: 1, meta: { tk: "NOPE", exch: "NGX" } } },
   ],
 };
-const only = ["EQ.AAPL", "EQ.MSFT", "IX.SPX", "FX.EURUSD", "FX.USDJPY", "FX.GBPUSD", "FX.USDCAD", "FX.USDSEK", "FX.USDCHF", "FX.USDNGN", "FX.DXY", "EC.USNFP", "YD.US10", "IX.NGSEINDX", "NGX", "IX.MOVE"];
+const only = ["EQ.AAPL", "EQ.MSFT", "IX.SPX", "FX.EURUSD", "FX.USDJPY", "FX.GBPUSD", "FX.USDCAD", "FX.USDSEK", "FX.USDCHF", "FX.USDNGN", "FX.DXY", "EC.USNFP", "EC.USUR", "IX.NGSEINDX", "NGX", "IX.MOVE"];
 const providers = ["eodhd", "fmp", "fred", "exchangerate", "ngxpulse"] as const;
 
 // --- dry run writes nothing ----
@@ -79,7 +79,7 @@ t("FX from ExchangeRate-API (inverted for EURUSD)", Math.abs(Number(q["FX.EURUSD
 const want = dxy({ EURUSD: 1 / 0.86, USDJPY: 152.4, GBPUSD: 1 / 0.75, USDCAD: 1.39, USDSEK: 9.4, USDCHF: 0.8 })!;
 t("DXY computed from its six components", Math.abs(Number(q["FX.DXY"]?.[0]) - want) < 1e-4 && want > 80 && want < 120, [q["FX.DXY"], want]);
 t("FRED payrolls: negative kept, dated at month end", q["EC.USNFP"]?.[0] === -35 && q["EC.USNFP"]?.[2] === "2026-09-30", q["EC.USNFP"]);
-t("FRED skips missing '.' values", q["YD.US10"]?.[0] === 4.01 && q["YD.US10"]?.[2] === "2026-10-27", q["YD.US10"]);
+t("FRED skips missing '.' values", q["EC.USUR"]?.[0] === 4.3 && q["EC.USUR"]?.[2] === "2026-08-31", q["EC.USUR"]);
 t("NGX All-Share from NGX Pulse", q["IX.NGSEINDX"]?.[0] === 151234.56 && q["IX.NGSEINDX"]?.[3] === "ngxpulse", q["IX.NGSEINDX"]);
 t("unknown instrument stays simulated", r.unresolved.includes("IX.MOVE"), r.unresolved);
 

@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/macro-sync",
       "schedule": "20 5 * * *"
+    },
+    {
+      "path": "/api/cron/macro-sync?group=rates",
+      "schedule": "50 5 * * *"
     }
   ]
 }

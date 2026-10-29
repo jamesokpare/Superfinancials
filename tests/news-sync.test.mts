@@ -3,7 +3,7 @@
 // pruning, provider errors, dry runs and idempotent re-runs.
 // Run: npm test
 import { runNewsSync } from "../src/lib/news/sync";
-import { OFFICIAL_FEEDS, parseFeed } from "../src/lib/news/sources";
+import { DEAL_FEEDS, OFFICIAL_FEEDS, dealAmount, parseFeed } from "../src/lib/news/sources";
 import { memoryStore } from "../src/lib/market/store";
 
 for (const k of ["MARKETAUX_API_KEY", "NEWSAPI_AI_KEY", "CURRENTS_API_KEY"]) process.env[k] = "test-" + k;
@@ -106,6 +106,16 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 const os = memoryStore(); const ro = await runNewsSync({ store: os, now: NOW, providers: ["official"] });
 const oi = (await os.list("mktnews")).filter((d) => d.id.startsWith("day-")).flatMap((d) => (d.data.items as { via: string; src: string; cc: string[] }[]));
 t("official feeds: stored as 'official', publisher and country set, failing feeds don't stop the rest", ro.added === 2 && oi.every((x) => x.via === "official") && oi.some((x) => x.src === "Federal Reserve" && x.cc[0] === "US") && oi.some((x) => x.src === "European Central Bank" && x.cc[0] === "EU") && !ro.errors.official, { ro, oi });
+const deals = `<?xml version="1.0"?><rss><channel>
+<item><title>Lagos fintech Moniepoint raises $110 million Series C</title><link>https://techcabal.com/2026/10/29/moniepoint-c/</link><pubDate>Thu, 29 Oct 2026 08:00:00 GMT</pubDate><description><![CDATA[<p>Full article text that must not be stored.</p>]]></description></item>
+<item><title>Five things we learned at a conference</title><link>https://techcabal.com/2026/10/29/conference/</link><pubDate>Thu, 29 Oct 2026 07:00:00 GMT</pubDate></item>
+<item><title>Partech closes €280M Africa fund II</title><link>https://techcabal.com/2026/10/28/partech/</link><pubDate>Wed, 28 Oct 2026 12:00:00 GMT</pubDate></item>
+</channel></rss>`;
+globalThis.fetch = (async (input: string | URL | Request) => String(input instanceof Request ? input.url : input) === DEAL_FEEDS[2].url ? new Response(deals) : new Response("down", { status: 503 })) as typeof fetch;
+const ds = memoryStore(); const rd = await runNewsSync({ store: ds, now: NOW, providers: ["deals"] });
+const di = (await ds.list("mktnews")).filter((d) => d.id.startsWith("day-")).flatMap((d) => (d.data.items as { via: string; src: string; sum: string; title: string }[]));
+t("deal feeds: funding stories only, headline and link kept, publisher text not stored, amount read from the headline", rd.added === 2 && di.every((x) => x.via === "deals" && x.src === "TechCabal" && !/article text/.test(x.sum)) && di.some((x) => x.sum === "Reported amount: US$110m.") && di.some((x) => x.sum === "Reported amount: €280m."), { rd, di });
+t("deal amounts", dealAmount("raises US$1.2bn") === "US$1.2bn" && dealAmount("₦2 billion round") === "₦2bn" && dealAmount("PR2 launch") === null && dealAmount("$5 coffee") === null && dealAmount("KSh 500m") === "KSh500m");
 globalThis.fetch = _f;
 
 console.log(fails ? `\n${fails} news-sync test(s) failed` : "\nAll news-sync tests passed");

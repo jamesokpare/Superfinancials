@@ -12,7 +12,7 @@
 'use strict';
 const NF = { items: [], meta: null, st: 'idle', sig: '', f: { via: '', rel: '', q: '' }, shown: 12 };
 const NF_LS = 'sf.news.v1';
-const NF_VIA = { marketaux: 'Marketaux', newsapi: 'NewsAPI.ai', currents: 'Currents', official: 'Official sources' };
+const NF_VIA = { marketaux: 'Marketaux', newsapi: 'NewsAPI.ai', currents: 'Currents', official: 'Official sources', deals: 'Startup and deal news' };
 
 function nfBuild(docs) {
   let items = [], meta = null;
