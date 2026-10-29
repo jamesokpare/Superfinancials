@@ -52,5 +52,6 @@ We move it in stages so the app keeps working at every step.
 - ✅ Real end-of-day prices from the provider APIs flow into the existing `Provider` layer (`src/lib/market/`, daily cron).
 - ✅ Provider headlines on Market news, briefs and security pages (`src/lib/news/`, `public/legacy/news-feed.js`).
 - ✅ Reported fundamentals for U.S. equities (`src/lib/fundamentals/`, `public/legacy/fundamentals.js`).
-- Next for data: load history per instrument on demand instead of the whole `mkt` collection; real earnings estimates and surprises; NGX company fundamentals; UK company data (Companies House) for the pages that still say "no provider connected".
+- ✅ Reported earnings and consensus estimates (`public/legacy/earnings.js`).
+- Next for data: load history per instrument on demand instead of the whole `mkt` collection; NGX company fundamentals; UK company data (Companies House) for the pages that still say "no provider connected".
 - Deploy to Vercel; Supabase migrations from CI.

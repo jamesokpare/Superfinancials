@@ -76,6 +76,7 @@ map to low / medium / high effort.
 | `src/lib/news/`, `src/app/api/cron/news-sync/` | News sync and its scheduled endpoint |
 | `public/legacy/news-feed.js` | Adds provider headlines to the legacy news pages |
 | `src/lib/fundamentals/`, `public/legacy/fundamentals.js` | Reported fundamentals: sync and the browser add-on |
+| `public/legacy/earnings.js` | Reported earnings and consensus estimates in calendars, briefs and movers |
 | `supabase/migrations/` | Schema and row-level security |
 | `supabase/seed-data/` | Shared documents exported from the artifact's database |
 | `public/i18n/` | Interface translations (zh, ja, ko, fr, de, es, pt) |
@@ -227,6 +228,17 @@ yield) are recomputed from the live price; statements reported in another
 currency are converted to USD at the app's FX rate. Pages say where the
 figures come from (Financials tab, key stats, valuation and screener notes).
 Companies without stored data keep their simulated figures and labels.
+
+**Earnings.** Each company's doc also holds its quarterly reports: report
+date and timing, reported EPS (and revenue from FMP), the consensus EPS and
+revenue estimates before each report, and EODHD's consensus trend (estimate
+now vs 7, 30 and 90 days ago). `public/legacy/earnings.js` uses them for the
+earnings calendar and event pages, earnings briefs and surprises on Market news,
+movers' catalysts and chart markers; price reactions are still measured from
+the app's prices. Companies without stored earnings keep the simulated schedule
+and labels. A company that has reported since its last fetch is refetched first,
+and each run pulls recent actuals and upcoming estimates for all companies from
+one bulk calendar call.
 
 **Schedule.** `GET /api/cron/fundamentals-sync` runs daily at 05:40 UTC and
 refreshes up to `FUND_BUDGET` companies whose data is missing or older than
