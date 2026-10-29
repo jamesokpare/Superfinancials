@@ -7,6 +7,7 @@
  * - `where` / `orderBy` / `limit` run in the browser over the whole
  *   collection, as the original store did (collections stay small).
  * - Live updates come from one Supabase Realtime subscription on `docs`.
+ * - `collection(...).getMany(ids)` (an extension) reads several documents in one query.
  */
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 
@@ -236,6 +237,16 @@ export function createDb(sb: SupabaseClient) {
       path,
       doc(id?: string) { return docRef(`${path}/${id ?? newId()}`); },
       async add(data: Data) { const r = docRef(`${path}/${newId()}`); await r.set(data); return r; },
+      /** Next.js port extension: several documents by id in one query (missing ids are absent from the map). */
+      async getMany(ids: string[]): Promise<Map<string, Data>> {
+        const m = new Map<string, Data>();
+        for (let i = 0; i < ids.length; i += 100) {
+          const { data, error } = await sb.from("docs").select("id,data").eq("parent", path).in("id", ids.slice(i, i + 100));
+          if (error) throw mapErr(error);
+          (data ?? []).forEach((r) => m.set(r.id as string, r.data as Data));
+        }
+        return m;
+      },
     };
   }
 

@@ -76,6 +76,7 @@ map to low / medium / high effort.
 | `src/lib/news/`, `src/app/api/cron/news-sync/` | News sync and its scheduled endpoint |
 | `public/legacy/news-feed.js` | Adds provider headlines to the legacy news pages |
 | `src/lib/fundamentals/`, `public/legacy/fundamentals.js` | Reported fundamentals: sync and the browser add-on |
+| `public/legacy/history.js` | Loads each instrument's price history on demand |
 | `public/legacy/earnings.js` | Reported earnings and consensus estimates in calendars, briefs and movers |
 | `src/lib/ukreg/`, `src/app/api/uk-companies/`, `public/legacy/ukreg.js` | UK company register (Companies House) |
 | `supabase/migrations/` | Schema and row-level security |
@@ -160,13 +161,20 @@ writes them into the `mkt` collection the app already reads. In the browser
 
 Each run writes:
 - `mkt/d-<date>`: that day's closes (`[close, change, date, source]` per instrument)
-- `mkt/h-<id>@<source>`: daily history (FRED every week; metered providers
-  backfill up to `MARKET_HISTORY_BUDGET` instruments per run)
 - `mkt/_meta`: a one-line summary shown on the Sources panel
+- `mkt/_hist`: an index of instruments that have history, with their last date
+- `mkthist/<id>`: each instrument's daily history, one series per source (FRED
+  every week; metered providers backfill up to `MARKET_HISTORY_BUDGET`
+  instruments per run)
+
+Browsers load only `mkt` up front (about 11 KB). `public/legacy/history.js`
+fetches an instrument's `mkthist` doc the first time its series is used (in
+batches, one database query per batch), then rebuilds and re-renders.
+History docs from earlier versions in `mkt` are moved on the next sync run.
 - `adm_inst/AD.NG.*`: today's NGX close appended to each desk listing
 
-Day documents older than 35 days are folded into the history documents, so the
-collection every browser loads stays small.
+Day documents older than 35 days are folded into the history documents, so
+`mkt` stays small.
 
 **Schedule.** `vercel.json` runs `GET /api/cron/market-sync` at 22:30 UTC on
 weekdays (after the U.S. close). Set `CRON_SECRET` in the Vercel project, plus

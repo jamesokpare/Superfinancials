@@ -3,8 +3,13 @@
  * writes them where the app's Provider layer already reads real data:
  *
  *   mkt/d-<run date>     { type: "day",  q: { <id>: [close, change, obsDate, src, note?] } }
- *   mkt/h-<id>@<src>     { type: "hist", id, src, t0, c: [...], dd: [...] }   daily history
  *   mkt/_meta            { type: "meta", checked, n, note }                   last-run summary
+ *   mkt/_hist            { type: "histidx", ids: { <id>: <last date> } }     which instruments have history
+ *   mkthist/<id>         { type: "hist", id, parts: { <src>: { t0, c, dd, checked } } }   daily history
+ *
+ * Browsers load `mkt` (small) up front and an instrument's `mkthist` doc only
+ * when its series is first needed. History docs from earlier versions
+ * (mkt/h-<id>@<src>, mkt/h-<id>) are moved to `mkthist` on the next run.
  *   adm_inst/AD.NG.<TK>  NGX listings kept by the data desk (d/c arrays)
  *
  * In the browser, liveBuild() splices these onto the simulated series and the
@@ -109,7 +114,16 @@ export async function runMarketSync(opts: SyncOptions = {}): Promise<SyncReport>
 
   const mkt = new Map((await store.list("mkt")).map((d) => [d.id, d.data]));
   const histId = (id: string, src: string) => `h-${id}@${src}`;
-  const histAge = (docId: string) => { const x = mkt.get(docId); return x ? nowMs - (Date.parse(String(x.checked)) || 0) : Infinity; };
+  // History by source, keyed h-<id>@<src>: from mkthist, plus legacy docs still in mkt (moved on write).
+  const hist = new Map<string, Record<string, unknown>>();
+  const histDocsById = new Map<string, Record<string, unknown>>();
+  for (const d of await store.list("mkthist")) {
+    histDocsById.set(d.id, d.data);
+    for (const [src, part] of Object.entries((d.data.parts ?? {}) as Record<string, Record<string, unknown>>)) hist.set(histId(d.id, src), { type: "hist", id: d.id, src, ...part });
+  }
+  const legacyHist = [...mkt].filter(([id, x]) => id.startsWith("h-") && (x as { type?: string }).type === "hist");
+  for (const [, x] of legacyHist) { const k = histId(String(x.id), String(x.src ?? "web")); if (!hist.has(k)) hist.set(k, x as Record<string, unknown>); }
+  const histAge = (docId: string) => { const x = hist.get(docId); return x ? nowMs - (Date.parse(String(x.checked)) || 0) : Infinity; };
 
   const providers: SyncReport["providers"] = {};
   const stat = (p: string) => (providers[p] ??= { requested: 0, resolved: 0 });
@@ -184,7 +198,7 @@ export async function runMarketSync(opts: SyncOptions = {}): Promise<SyncReport>
   // --- 4. history backfill -------------------------------------------------------------
   const histDocs: Doc[] = [];
   for (const h of hits.values()) if (h.points?.length) histDocs.push({ id: histId(h.id, h.p), data: encodeHist(h.id, h.p, mergePoints(historyDays, nowMs, h.points), checked) });
-  const need = [...hits.values()].filter((h) => HIST_FETCH[h.p] && h.s !== "calc" && !mkt.has(histId(h.id, h.p)));
+  const need = [...hits.values()].filter((h) => HIST_FETCH[h.p] && h.s !== "calc" && !hist.has(histId(h.id, h.p)));
   const batch = need.slice(0, historyBudget);
   await Promise.all(chunked(batch, 3).map(async (group) => {
     for (const h of group) {
@@ -211,7 +225,7 @@ export async function runMarketSync(opts: SyncOptions = {}): Promise<SyncReport>
   }
   for (const [docId, pts] of folded) {
     const [, k, s] = /^h-(.+)@([^@]+)$/.exec(docId)!;
-    const fresh = histDocs.find((d) => d.id === docId); const old = fresh?.data ?? mkt.get(docId);
+    const fresh = histDocs.find((d) => d.id === docId); const old = fresh?.data ?? hist.get(docId);
     const merged = mergePoints(historyDays, nowMs, pts, old ? decodeHist(old) : []);
     if (!merged.length) continue;
     const doc = { id: docId, data: encodeHist(k, s, merged, checked) };
@@ -259,9 +273,22 @@ export async function runMarketSync(opts: SyncOptions = {}): Promise<SyncReport>
     date: runDay, dryRun: !!opts.dryRun, store: store.kind, configured, resolved: hits.size, bySource, unresolved, providers,
     history: { written, pending: Math.max(0, need.length - batch.length) }, ngx, compacted, note,
   };
-  if (opts.dryRun || (!hits.size && !ngx.updated && !compacted.length)) return report;
+  if (opts.dryRun || (!hits.size && !ngx.updated && !compacted.length && !legacyHist.length)) return report;
 
-  if (histDocs.length) await store.upsert("mkt", histDocs);
+  // History: one mkthist doc per instrument holding every source's series.
+  for (const d of histDocs) hist.set(d.id, d.data);
+  const touched = new Set([...histDocs.map((d) => String(d.data.id)), ...legacyHist.map(([, x]) => String(x.id))]);
+  const histWrites: Doc[] = [...touched].map((id) => {
+    const parts: Record<string, unknown> = { ...((histDocsById.get(id)?.parts ?? {}) as Record<string, unknown>) };
+    for (const [k, x] of hist) if (String(x.id) === id) { const { type: _t, id: _i, src, ...part } = x; void _t; void _i; parts[String(src ?? k.split("@").pop())] = part; }
+    return { id, data: { type: "hist", id, checked, parts } };
+  });
+  if (histWrites.length) await store.upsert("mkthist", histWrites);
+  // Index of instruments with history and their last date, loaded by every browser with mkt.
+  const idx: Record<string, string> = {};
+  for (const x of hist.values()) { const pts = decodeHist(x); const last = pts.at(-1)?.t; const id = String(x.id); if (last && (!idx[id] || last > idx[id])) idx[id] = last; }
+  await store.upsert("mkt", [{ id: "_hist", data: { type: "histidx", checked, ids: idx } }]);
+  if (legacyHist.length) await store.remove("mkt", legacyHist.map(([id]) => id));
   if (admWrites.length) { await store.upsert("adm_inst", admWrites); await store.remove("adm_inst", admDeletes); }
   if (hits.size) await store.upsert("mkt", [{ id: dayId, data: { type: "day", date: runDay, checked, q } }]);
   await store.upsert("mkt", [{ id: "_meta", data: { type: "meta", checked, n: Object.keys(q).length, note } }]);
