@@ -1,8 +1,21 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/api/cron/market-sync", "schedule": "30 22 * * 1-5" },
-    { "path": "/api/cron/news-sync?run=morning", "schedule": "15 6 * * *" },
-    { "path": "/api/cron/news-sync?run=evening", "schedule": "45 16 * * *" }
+    {
+      "path": "/api/cron/market-sync",
+      "schedule": "30 22 * * 1-5"
+    },
+    {
+      "path": "/api/cron/news-sync?run=morning",
+      "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/cron/news-sync?run=evening",
+      "schedule": "45 16 * * *"
+    },
+    {
+      "path": "/api/cron/fundamentals-sync",
+      "schedule": "40 5 * * *"
+    }
   ]
 }
