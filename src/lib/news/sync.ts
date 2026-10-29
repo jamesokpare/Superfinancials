@@ -14,10 +14,10 @@ import "server-only";
 import { envKey } from "@/lib/providers/http";
 import { scrub } from "@/lib/providers";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
-import { canonicalUrl, currentsNews, marketauxNews, newsApiAiNews, officialNews, type NewsItem, type NewsProvider } from "./sources";
+import { canonicalUrl, currentsNews, dealNews, marketauxNews, newsApiAiNews, officialNews, type NewsItem, type NewsProvider } from "./sources";
 
-const ENVS: Record<Exclude<NewsProvider, "official">, string> = { marketaux: "MARKETAUX_API_KEY", newsapi: "NEWSAPI_AI_KEY", currents: "CURRENTS_API_KEY" };
-const LABEL: Record<NewsProvider, string> = { marketaux: "Marketaux", newsapi: "NewsAPI.ai", currents: "Currents", official: "Official sources" };
+const ENVS: Record<Exclude<NewsProvider, "official" | "deals">, string> = { marketaux: "MARKETAUX_API_KEY", newsapi: "NEWSAPI_AI_KEY", currents: "CURRENTS_API_KEY" };
+const LABEL: Record<NewsProvider, string> = { marketaux: "Marketaux", newsapi: "NewsAPI.ai", currents: "Currents", official: "Official sources", deals: "Startup and deal news" };
 const COL = "mktnews";
 const DAY = 864e5;
 
@@ -76,7 +76,7 @@ export async function runNewsSync(opts: NewsSyncOptions = {}): Promise<NewsSyncR
   const since = new Date(now.getTime() - (opts.lookbackHours ?? 36) * 36e5);
   const keepDays = opts.keepDays ?? intEnv("NEWS_KEEP_DAYS", 14); const perDay = opts.perDay ?? 200;
   // Official feeds need no key, so they always run (last: a story also carried by a news API keeps that richer copy).
-  const configured = opts.providers ?? [...(Object.keys(ENVS) as Exclude<NewsProvider, "official">[]).filter((p) => envKey(ENVS[p])), "official" as const];
+  const configured = opts.providers ?? [...(Object.keys(ENVS) as Exclude<NewsProvider, "official" | "deals">[]).filter((p) => envKey(ENVS[p])), "official" as const, "deals" as const];
 
   const fetched: Record<string, number> = {}; const errors: Record<string, string> = {};
   const fetchers: Record<NewsProvider, () => Promise<NewsItem[]>> = {
@@ -84,6 +84,7 @@ export async function runNewsSync(opts: NewsSyncOptions = {}): Promise<NewsSyncR
     newsapi: () => newsApiAiNews(since),
     currents: () => currentsNews(since),
     official: () => officialNews(since),
+    deals: () => dealNews(since),
   };
   const batches = await Promise.all(configured.map(async (p) => {
     try { const r = await fetchers[p](); fetched[p] = r.length; return r; }

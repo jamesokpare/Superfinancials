@@ -204,7 +204,10 @@ news providers. A news sync (`src/lib/news/`) pulls recent articles from
 Marketaux (tickers and sentiment), NewsAPI.ai (broad business coverage) and
 Currents, plus African-markets queries, and the press-release feeds of official
 sources (Federal Reserve, ECB, Bank of England, BLS, BEA, EIA, SEC, IMF; no key,
-filter chip "Official sources"), and stores them in `mktnews/day-<date>`
+filter chip "Official sources"), and startup and deal news (TechCrunch Venture, Crunchbase News,
+TechCabal, Techpoint Africa, Disrupt Africa, Wamda, Sifted, EU-Startups; RSS, no key, filter chip
+"Startup and deal news": funding, fund and exit stories only, kept as headline, link and outlet plus
+the round size read from the headline, never the publisher's text), and stores them in `mktnews/day-<date>`
 documents. The same story from several providers is kept once (matched by URL,
 then title) and headlines older than 14 days are removed.
 
@@ -343,7 +346,8 @@ real prices have loaded yet.
 
 ## Macro data, calendars and private placements
 
-`GET /api/cron/macro-sync` (daily 05:20 UTC, `npm run macro:sync`) writes into
+`GET /api/cron/macro-sync` (daily 05:20 UTC; the official rate feeds and CFTC run separately at
+05:50 UTC as `?group=rates`, so each run stays inside the time limit; `npm run macro:sync` runs both) writes into
 the data desk's own collections, so everything appears with its source and the
 app treats it like Data studio content. It never changes documents you entered
 yourself, and a series only feeds the macro panels when you haven't supplied
@@ -354,22 +358,32 @@ that indicator for that country.
 | World Bank | none | 10 annual indicators for ~105 countries (GDP growth, GDP, GDP per head, inflation, unemployment, current account, exports, FDI, government debt, population) | Country data |
 | BIS | none | Central-bank policy rates, ~40 countries, monthly | Country data, macro panels (policy rate) |
 | ECB | none | Euro-area HICP inflation and deposit rate | Country data, macro panels |
-| OECD | none | Monthly CPI inflation, ~37 economies (one all-areas request, retried when OECD is overloaded) | Country data, macro panels (CPI) |
+| OECD | none | Monthly CPI inflation, ~37 economies. Asked in batches of 8 areas (wide queries time out when OECD is busy; 60 downloads an hour); EU members also from the COICOP-2018 dataflow, whose values win (their COICOP-1999 series stop at 2025-12) | Country data, macro panels (CPI) |
 | BIS | none | Monthly CPI inflation, ~64 economies (feeds the CPI panel where OECD doesn't) | Country data, macro panels |
-| World Bank Pink Sheet | none | Monthly averages for TTF gas (converted to EUR/MWh), Japan LNG, Australian coal, aluminium, nickel, zinc, iron ore, palm oil, urea, DAP | Commodities (those instruments are renamed "monthly average") |
+| World Bank Pink Sheet | none | Read from the monthly workbook `CMO-Historical-Data-Monthly.xlsx` (found on the commodity-markets page; the API no longer serves it). Monthly averages for TTF gas (converted to EUR/MWh), Japan LNG, Australian coal, aluminium, nickel, zinc, iron ore, palm oil, urea, DAP | Commodities (those instruments are renamed "monthly average") |
 | SMARD (Bundesnetzagentur) | none | German day-ahead power price, daily average | Commodities (German power) |
-| Eurostat, BLS (ICS) | none | Euro-indicator and U.S. labour-statistics release dates | Market calendars |
+| Eurostat, BLS (ICS) | none (BLS: `SEC_USER_AGENT`) | Eurostat headline data releases (`/o/calendars/eventsIcal`) and U.S. labour-statistics release dates. BLS blocks robots without a contact address, so it is only asked when `SEC_USER_AGENT` holds one | Market calendars |
 | EIA | `EIA_API_KEY` (free) | U.S. crude, gasoline, distillate inventories and gas storage, weekly | Country data (United States) |
 | FRED | `FRED_API_KEY` | U.S. release dates (CPI, payrolls, GDP, PCE …), next 45 days | Market calendars |
 | U.S. Treasury FiscalData | none | Upcoming Treasury auctions | Market calendars |
 | FMP, else EODHD | `FMP_API_KEY` / `EODHD_API_KEY` | Economic calendar with consensus and actuals; IPOs | Market calendars |
 | FMP | `FMP_API_KEY` | Ex-dividend dates for the tracked U.S. stocks and ETFs | Market calendars |
-| SEC EDGAR (Form D) | none (set `SEC_USER_AGENT`) | U.S. private placements: issuer, sector, state, year founded, amount raised, related persons | Private companies, Deal flow |
+| SEC EDGAR (Form D) | `SEC_USER_AGENT` ("Company contact@domain"; skipped without it) | U.S. private placements: issuer, sector, state, year founded, amount raised, related persons. Pooled funds (venture, private equity, hedge): type, amount offered and sold, investors, minimum | Private companies, Deal flow; Fund performance › **Funds raising now** |
+| U.S. Treasury | none | Daily par yield curve: 3M, 1Y, 2Y, 5Y, 10Y, 30Y (public domain) | U.S. yields (DESK prices) |
+| New York Fed | none | SOFR (instrument) and EFFR (series); credit line "Content from the New York Fed…" kept in the notes | Money markets, Country data |
+| Bank of England | none | SONIA (series), 5Y and 10Y nominal par gilt yields (Open Government Licence) | UK yields, Country data |
+| Bank of Canada | none | Benchmark bond yields 2Y, 5Y, 10Y, long (as 30Y); CORRA | Canada yields, Country data |
+| ECB | none | €STR, daily | Country data (euro area) |
+| CFTC Commitments of Traders | none | Weekly speculative net positions (non-commercial long minus short) in crude, gas, gold, silver, copper, grains, softs, S&P 500, 10Y note, euro, yen (public domain) | Country data (United States) |
 
 Form D is read from EDGAR's daily index (new filings only, not amendments) within
 a request budget (`FORMD_BUDGET`, default 250 a run), resuming where the last run
-stopped. Pooled investment funds and raises under `FORMD_MIN_SOLD` (US$1m) are
-skipped; issuers with no filing for a year are retired, and the newest 500 kept.
+stopped. SEC asks for a contact address in the User-Agent and answers 403 without one (or above
+10 requests a second); on a 403 the run stops for the day and resumes from the same filing next
+time. Company raises under `FORMD_MIN_SOLD` (US$1m) are skipped; issuers with no filing for a year
+are retired, and the newest 500 kept. Pooled funds (not registered '40 Act funds) go to a separate
+"funds raising" list (`adm_priv/secf-<cik>`, kind `raise`), newest 1,500, shown on Fund performance
+apart from the performance table, because Form D has no IRR, TVPI or DPI.
 The FMP and EODHD calendars depend on your plans; if an endpoint is not included,
 the run reports it and the other sources still update.
 
@@ -380,10 +394,13 @@ simulated volumes).
 Deliberately left out: IMF data (commercial reuse needs written permission),
 scraped sites (TradingEconomics, Investing.com) and proprietary series (PMIs,
 Baltic Dry, JKM). Nigerian T-bill, interbank and FMDQ rates have no free licensed
-source. FRED's API terms prohibit storing FRED data and passing it on; the market sync still
-stores some FRED series (yields, volatility indices, FX fallbacks, U.S. CPI), which should move to
-the producing agencies (Treasury, BLS, BEA, Cboe via a licensed provider) or be licensed. The full
-source research, with licences and a ranked plan, is in `docs/data-sources-research.md`.
+source. FRED's API terms prohibit storing FRED data and passing it on: U.S. Treasury yields and
+SOFR now come from the Treasury and the New York Fed instead. The market sync still stores some FRED
+series (credit spreads, volatility indices, FX fallbacks, U.S. CPI and payrolls), which should move to
+the producing agencies (BLS, BEA, Cboe via a licensed provider) or be licensed. The source research,
+with licences and ranked plans, is in `docs/data-sources-research.md` and
+`docs/data-sources-deeper-sweep.md` (second, deeper sweep: rates, Africa, energy, private markets,
+filings, national statistics, X).
 
 ## CI and monitoring (GitHub Actions)
 
@@ -409,5 +426,5 @@ set); the dry run also uses the provider secrets.
 | `npm run market:sync` | Pull end-of-day prices from the providers into the app (`-- --dry-run` to preview) |
 | `npm run news:sync` | Pull recent headlines from the news providers (`-- --dry-run` to preview) |
 | `npm run fundamentals:sync` | Refresh reported financials (`-- --dry-run`, `-- --budget=64`) |
-| `npm run macro:sync` | Pull macro data, calendars and Form D filings (`-- --dry-run`, `-- --only=bis,ecb`) |
+| `npm run macro:sync` | Pull macro data, official rates, calendars and Form D filings (`-- --dry-run`, `-- --only=bis,ecb`, `-- --group=rates`) |
 | `npm run sync:health` | Check that each sync ran recently and produced data (exit 1 if not) |

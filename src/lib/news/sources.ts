@@ -8,7 +8,7 @@ import { createCurrents } from "@/lib/providers/currents";
 import { createMarketaux } from "@/lib/providers/marketaux";
 import { createNewsApiAi } from "@/lib/providers/newsapi-ai";
 
-export type NewsProvider = "marketaux" | "newsapi" | "currents" | "official";
+export type NewsProvider = "marketaux" | "newsapi" | "currents" | "official" | "deals";
 
 export type NewsItem = {
   /** Stable id: a hash of the canonical URL. */
@@ -143,18 +143,49 @@ export function parseFeed(xml: string): { title: string; url: string; t: string;
     return { title: unxml(tagOf(b, ["title"])), url: unxml(href ?? tagOf(b, ["link", "guid"])), t: unxml(tagOf(b, ["pubDate", "published", "updated", "dc:date"])), sum: unxml(tagOf(b, ["description", "summary", "content"])) };
   });
 }
-export async function officialNews(since: Date): Promise<NewsItem[]> {
+async function feedNews(feeds: { url: string; src: string; cc: string[] }[], via: NewsProvider, since: Date, keep: (x: { title: string; url: string; t: string; sum: string }) => { sum: string } | null): Promise<NewsItem[]> {
   const out: NewsItem[] = []; const errors: string[] = [];
-  await Promise.all(OFFICIAL_FEEDS.map(async (f) => {
+  await Promise.all(feeds.map(async (f) => {
     try {
       const r = await fetch(f.url, { headers: { "user-agent": "Mozilla/5.0 (compatible; Superfinancials news sync; +https://github.com/jamesokpare/Superfinancials)", accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*" }, signal: AbortSignal.timeout(30_000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       for (const x of parseFeed(await r.text())) {
-        const it = item({ t: x.t, title: x.title, sum: x.sum, url: x.url, src: f.src, via: "official", tk: [], cc: f.cc, sent: null });
+        const k = keep(x); if (!k) continue;
+        const it = item({ t: x.t, title: x.title, sum: k.sum, url: x.url, src: f.src, via, tk: [], cc: f.cc, sent: null });
         if (it && Date.parse(it.t) >= since.getTime()) out.push(it);
       }
     } catch (e) { errors.push(`${f.src}: ${(e as Error).message}`); }
   }));
-  if (!out.length && errors.length === OFFICIAL_FEEDS.length) throw new Error(errors.slice(0, 3).join("; "));
+  if (!out.length && errors.length === feeds.length) throw new Error(errors.slice(0, 3).join("; "));
   return out;
 }
+export const officialNews = (since: Date) => feedNews(OFFICIAL_FEEDS, "official", since, (x) => ({ sum: x.sum }));
+
+/**
+ * Startup and venture news (RSS, no key): funding rounds, new funds, exits. Publishers' own text is not stored:
+ * only headline, link, date and outlet, plus the round size the app reads from the headline. (TechCrunch's RSS
+ * terms allow showing feed items with attribution and a link; the others publish standard public feeds.)
+ */
+export const DEAL_FEEDS: { url: string; src: string; cc: string[] }[] = [
+  { url: "https://techcrunch.com/category/venture/feed/", src: "TechCrunch", cc: [] },
+  { url: "https://news.crunchbase.com/feed/", src: "Crunchbase News", cc: [] },
+  { url: "https://techcabal.com/feed/", src: "TechCabal", cc: [] },
+  { url: "https://techpoint.africa/feed/", src: "Techpoint Africa", cc: ["NG"] },
+  { url: "https://disruptafrica.com/feed/", src: "Disrupt Africa", cc: [] },
+  { url: "https://www.wamda.com/feed", src: "Wamda", cc: [] },
+  { url: "https://sifted.eu/feed", src: "Sifted", cc: [] },
+  { url: "https://www.eu-startups.com/feed/", src: "EU-Startups", cc: [] },
+];
+const DEAL_RE = /\b(rais(e|es|ed|ing)|funding|seed|pre-seed|series [a-f]\b|round|backs|backed|invest(s|ment|ors?)?|acquir(e|es|ed)|acquisition|fund (i|ii|iii|iv|v|close|launch)|closes? .*fund|new fund|valuation|unicorn|ipo|exit)\b/i;
+/** "$12m", "$12 million", "US$1.2bn", "€5M", "₦2 billion" → "US$12m" style text; null when no amount. */
+export function dealAmount(title: string): string | null {
+  const m = title.match(/(?<![A-Za-z])(US\$|\$|€|£|₦|KSh|R)\s?(\d+(?:[.,]\d+)?)\s?(bn|billion|b|m|million|mn|k|thousand)?\b/i);
+  if (!m || !m[3] && Number(m[2].replace(",", "")) < 1000) return null;
+  const unit = !m[3] ? "" : /^b/i.test(m[3]) ? "bn" : /^(k|t)/i.test(m[3]) ? "k" : "m";
+  return `${m[1] === "$" ? "US$" : m[1]}${m[2]}${unit}`;
+}
+export const dealNews = (since: Date) => feedNews(DEAL_FEEDS, "deals", since, (x) => {
+  if (!DEAL_RE.test(x.title)) return null;
+  const amt = dealAmount(x.title);
+  return { sum: amt ? `Reported amount: ${amt}.` : "" };
+});

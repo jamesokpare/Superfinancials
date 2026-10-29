@@ -6,9 +6,11 @@
  * Called daily by Vercel Cron (vercel.json) with `Authorization: Bearer <CRON_SECRET>`.
  *   ?dry=1                 fetch and report without writing
  *   ?only=bis,ecb          limit to some sources
+ *   ?group=rates           the official interest-rate feeds and CFTC positioning (second daily cron);
+ *                          without it the core sources run
  */
 import { cronGuard } from "@/lib/auth/cron";
-import { runMacroSync, type MacroSourceId } from "@/lib/macro/sync";
+import { runMacroSync, type MacroGroup, type MacroSourceId } from "@/lib/macro/sync";
 
 export const maxDuration = 300;
 
@@ -16,7 +18,7 @@ export async function GET(req: Request) {
   const denied = cronGuard(req); if (denied) return denied;
   const sp = new URL(req.url).searchParams;
   try {
-    const report = await runMacroSync({ dryRun: sp.get("dry") === "1", only: sp.get("only")?.split(",").map((s) => s.trim()).filter(Boolean) as MacroSourceId[] | undefined });
+    const report = await runMacroSync({ dryRun: sp.get("dry") === "1", only: sp.get("only")?.split(",").map((s) => s.trim()).filter(Boolean) as MacroSourceId[] | undefined, group: sp.get("group") === "rates" ? "rates" : ("core" as MacroGroup) });
     return Response.json(report, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     return Response.json({ code: "sync_failed", message: (e as Error).message }, { status: 500 });

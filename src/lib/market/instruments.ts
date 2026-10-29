@@ -84,27 +84,22 @@ for (const pair of FX.split(" ")) {
 add("CR.BTCUSD", { p: "eodhd", s: "BTC-USD.CC" }, { p: "fmp", s: "BTCUSD" }, { p: "alphavantage", s: "BTCUSD" });
 add("CR.ETHUSD", { p: "eodhd", s: "ETH-USD.CC" }, { p: "fmp", s: "ETHUSD" }, { p: "alphavantage", s: "ETHUSD" });
 
-// --- Government yields (EODHD .GBOND), with FRED for U.S. Treasuries ---
+// --- Government yields (EODHD .GBOND). U.S. Treasury, Bank of England and Bank of Canada yields also come
+// daily from the publishers themselves (macro sync, src/lib/macro/rates.ts) and take precedence in the app.
+// FRED is not used for them: its terms don't allow storing its data. ---
 const CURVES: Record<string, string[]> = {
   US: ["2", "5", "10", "30"], UK: ["2", "5", "10", "30"], DE: ["2", "5", "10", "30"], FR: ["2", "5", "10", "30"], IT: ["2", "5", "10", "30"],
   JP: ["2", "5", "10", "30"], CA: ["2", "5", "10", "30"], AU: ["2", "5", "10", "30"], IN: ["2", "5", "10", "30"], BR: ["2", "5", "10"],
   ZA: ["2", "5", "10", "30"], NG: ["2", "5", "10", "30"], CN: ["2", "5", "10", "30"], MX: ["2", "5", "10", "30"], ID: ["2", "5", "10", "30"],
   TR: ["2", "5", "10"], KE: ["2", "5", "10"], EG: ["2", "5", "10"], GH: ["2", "5", "10"],
 };
-const UST: Record<string, string> = { "2": "DGS2", "5": "DGS5", "10": "DGS10", "30": "DGS30" };
-for (const [cc, tenors] of Object.entries(CURVES)) {
-  for (const t of tenors) {
-    if (cc === "US") add(`YD.US${t}`, { p: "fred", s: { series: UST[t] } });
-    add(`YD.${cc}${t}`, { p: "eodhd", s: `${cc}${t}Y.GBOND` });
-  }
-}
-add("YD.US3M", { p: "fred", s: { series: "DGS3MO" } }, { p: "eodhd", s: "US3M.GBOND" });
-add("YD.US1Y", { p: "fred", s: { series: "DGS1" } }, { p: "eodhd", s: "US1Y.GBOND" });
+for (const [cc, tenors] of Object.entries(CURVES)) for (const t of tenors) add(`YD.${cc}${t}`, { p: "eodhd", s: `${cc}${t}Y.GBOND` });
+add("YD.US3M", { p: "eodhd", s: "US3M.GBOND" });
+add("YD.US1Y", { p: "eodhd", s: "US1Y.GBOND" });
 
-// --- Spreads and money markets (FRED) ---
+// --- Spreads (FRED). SOFR comes from the New York Fed (macro sync). ---
 add("SP.HYOAS", { p: "fred", s: { series: "BAMLH0A0HYM2" } });
 add("SP.IGOAS", { p: "fred", s: { series: "BAMLC0A0CM" } });
-add("MM.SOFR", { p: "fred", s: { series: "SOFR" } });
 
 // --- Commodities: FMP continuous futures; EODHD spot metals; FRED spot energy ---
 const CMD_FMP: Record<string, string> = {

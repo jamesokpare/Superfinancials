@@ -67,7 +67,7 @@ jobs:
       - name: Fundamentals (dry run)
         continue-on-error: true
         run: set -o pipefail; npm run -s fundamentals:sync -- --dry-run 2>&1 | tee fundamentals.txt
-      - name: Macro data, calendars and Form D (dry run)
+      - name: Macro data, official rates, calendars and Form D (dry run)
         continue-on-error: true
         run: set -o pipefail; npm run -s macro:sync -- --dry-run 2>&1 | tee macro.txt
       - name: Summary
