@@ -55,7 +55,7 @@ if (typeof ceRecord === 'function') {
   ceRecord = (id, t) => {
     const rec = _r(id, t); const R = erDoc(id); if (!R) return rec;
     const row = erRow(R, t); const e = nxEarn(id, t); const past = t <= END;
-    const k = typeof fdFx === 'function' ? fdFx(R.ccy) ?? 1 : 1;
+    const k = typeof fdFx === 'function' ? fdFx(R.ccy, (BY[id] && BY[id].ccy) || 'USD') ?? 1 : 1;
     const tr = R.earnTrend; const isNext = !past && row && tr && tr.now != null;
     const rev = v => v == null ? null : v * k;
     rec.d = {

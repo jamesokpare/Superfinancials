@@ -9,7 +9,7 @@ import { createAlphaVantage } from "@/lib/providers/alphavantage";
 import { createEodhd } from "@/lib/providers/eodhd";
 import { createFmp } from "@/lib/providers/fmp";
 
-export type FundProvider = "eodhd" | "fmp" | "alphavantage";
+export type FundProvider = "eodhd" | "fmp" | "alphavantage" | "mansa" | "mystocks" | "ngxpulse" | "africa";
 
 /** One fiscal year. */
 export type FundYear = { y: number; end: string; rev: number | null; gp: number | null; op: number | null; ni: number | null; eps: number | null; assets: number | null; debt: number | null; equity: number | null; fcf: number | null };
@@ -29,6 +29,8 @@ export type EarnTrend = { p: string | null; now: number | null; d7: number | nul
 
 export type FundDoc = {
   type: "fund";
+  /** "snapshot": key figures only (no annual statements), from the African market APIs. */
+  kind?: "full" | "snapshot";
   id: string;          // app instrument id, e.g. EQ.AAPL
   tk: string;
   src: FundProvider;
@@ -37,7 +39,7 @@ export type FundDoc = {
   name?: string;
   shares: number | null;   // shares outstanding
   /** Trailing twelve months, or the latest fiscal year when `basis` is "FY". */
-  ttm: { basis: "TTM" | "FY"; rev: number | null; gp: number | null; op: number | null; ni: number | null; ebitda: number | null; eps: number | null; fcf: number | null; divPs: number | null };
+  ttm: { basis: "TTM" | "FY" | "snapshot"; rev: number | null; gp: number | null; op: number | null; ni: number | null; ebitda: number | null; eps: number | null; fcf: number | null; divPs: number | null };
   /** Latest balance sheet. */
   bs: { date: string | null; equity: number | null; debt: number | null; cash: number | null };
   /** Consensus EPS for the next fiscal year, when available. */
@@ -81,8 +83,9 @@ const byDate = (m: unknown) => Object.entries(obj(m)).filter(([k]) => day(k)).so
 const growthPct = (a: number | null, b: number | null) => (a !== null && b !== null && b > 0 ? (a / b - 1) * 100 : null);
 
 // --- EODHD: one /fundamentals call has statements, TTM highlights, shares and earnings --------
-export async function eodhdFundamentals(id: string, tk: string): Promise<FundDoc | null> {
-  const d = await createEodhd().fundamentals(`${tk}.US`) as Record<string, unknown>;
+/** `exch` is EODHD's exchange code: US, or XNSA for the Nigerian Exchange. */
+export async function eodhdFundamentals(id: string, tk: string, exch = "US"): Promise<FundDoc | null> {
+  const d = await createEodhd().fundamentals(`${tk}.${exch}`) as Record<string, unknown>;
   const G = obj(d.General), H = obj(d.Highlights), SS = obj(d.SharesStats), E = obj(d.Earnings), F = obj(d.Financials);
   const inc = byDate(obj(F.Income_Statement).yearly), bal = byDate(obj(F.Balance_Sheet).yearly), cf = byDate(obj(F.Cash_Flow).yearly);
   const balQ = byDate(obj(F.Balance_Sheet).quarterly), cfQ = byDate(obj(F.Cash_Flow).quarterly);

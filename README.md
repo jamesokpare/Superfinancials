@@ -229,6 +229,15 @@ currency are converted to USD at the app's FX rate. Pages say where the
 figures come from (Financials tab, key stats, valuation and screener notes).
 Companies without stored data keep their simulated figures and labels.
 
+**NGX listings.** The data desk's NGX listings (`adm_inst/AD.NG.*`) are
+covered too: full statements from EODHD (`<TICKER>.XNSA`) when it has them,
+else key figures (market cap, shares, EPS or P/E, dividend, book value,
+revenue, net income) from Mansa, MyStocks Africa, NGX Pulse or Africa API.
+Those APIs' formats vary, so fields are found by common names. Figures stay in
+the listing's currency (NGN). A listing with key figures only shows them on
+its Financials tab; one with no data says so instead of showing blank tables.
+`FUND_NGX_BUDGET` (default 10) sets how many NGX listings each run fetches.
+
 **Earnings.** Each company's doc also holds its quarterly reports: report
 date and timing, reported EPS (and revenue from FMP), the consensus EPS and
 revenue estimates before each report, and EODHD's consensus trend (estimate
