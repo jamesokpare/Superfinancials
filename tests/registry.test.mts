@@ -2,7 +2,7 @@
 // search across both, UK/LEI de-duplication, country filter, one source
 // failing, LEI records with parents and subsidiaries, caching.
 // Run: npm test
-import { isoCountry, leiCode, leiDetail, searchRegistry } from "../src/lib/registry";
+import { franceDetail, isoCountry, leiCode, leiDetail, norwayDetail, searchRegistry } from "../src/lib/registry";
 
 process.env.COMPANIES_HOUSE_API_KEY = "test-key";
 const calls: string[] = [];
@@ -23,6 +23,17 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     if (auth !== "Basic " + Buffer.from("test-key:").toString("base64")) return json({ error: "Invalid Authorization" }, 401);
     if (url.pathname === "/search/companies") return json({ total_results: 3, items: [{ company_number: "00445790", title: "TESCO PLC", company_status: "active", company_type: "plc", date_of_creation: "1947-11-27", address_snippet: "Welwyn Garden City" }] });
     return json({ error: "not mocked" }, 404);
+  }
+  if (url.host === "data.brreg.no") {
+    if (url.pathname === "/enhetsregisteret/api/enheter") return json(url.searchParams.get("navn") === "plc" ? { _embedded: { enheter: [{ organisasjonsnummer: "923609016", navn: "EQUINOR ASA", organisasjonsform: { kode: "ASA", beskrivelse: "Allmennaksjeselskap" }, forretningsadresse: { adresse: ["Forusbeen 50"], postnummer: "4035", poststed: "STAVANGER", land: "Norge" }, stiftelsesdato: "1972-09-18" }] }, page: { totalElements: 1 } } : { page: { totalElements: 0 } });
+    if (url.pathname === "/enhetsregisteret/api/enheter/923609016") return json({ organisasjonsnummer: "923609016", navn: "EQUINOR ASA", organisasjonsform: { beskrivelse: "Allmennaksjeselskap" }, stiftelsesdato: "1972-09-18", naeringskode1: { kode: "06.100", beskrivelse: "Utvinning av råolje" }, antallAnsatte: 21000, hjemmeside: "www.equinor.com", konkurs: false });
+    return json({ status: 404 }, 404);
+  }
+  if (url.host === "recherche-entreprises.api.gouv.fr") {
+    const q = url.searchParams.get("q");
+    if (q === "plc") return json({ results: [{ siren: "542051180", nom_complet: "TOTALENERGIES SE", nature_juridique: "5800", categorie_entreprise: "GE", date_creation: "1924-03-28", etat_administratif: "A", siege: { adresse: "2 PLACE JEAN MILLIER 92400 COURBEVOIE" } }], total_results: 1 });
+    if (q === "542051180") return json({ results: [{ siren: "542051180", nom_complet: "TOTALENERGIES SE", nature_juridique: "5800", date_creation: "1924-03-28", etat_administratif: "A", activite_principale: "70.10Z", siege: { adresse: "2 PLACE JEAN MILLIER 92400 COURBEVOIE" }, dirigeants: [{ nom: "POUYANNE", prenoms: "Patrick", qualite: "Président-directeur général" }, { denomination: "ERNST & YOUNG AUDIT", qualite: "Commissaire aux comptes titulaire" }] }] });
+    return json({ results: [], total_results: 0 });
   }
   if (url.host !== "api.gleif.org") return json({ error: "unexpected host" }, 500);
   if (gleifDown) return json({ errors: [{ title: "Service unavailable" }] }, 503);
@@ -48,20 +59,25 @@ t("LEI codes: 20 characters, last two digits", leiCode(" 549300d8oi6j0s0w2i34 ")
 t("country codes: the app's UK is GB to registers", isoCountry("UK") === "GB" && isoCountry("ng") === "NG" && isoCountry("Nigeria") === undefined);
 
 const r = await searchRegistry("plc");
-t("search covers the UK register and GLEIF", r.items.length === 2 && r.items[0].src === "uk" && r.items[1].src === "lei" && r.items[1].name === "DANGOTE CEMENT PLC", r.items);
+t("search covers the UK, Norwegian and French registers and GLEIF", r.items.length === 4 && r.items[0].src === "uk" && r.items[1].src === "no" && r.items[2].src === "fr" && r.items[3].src === "lei" && r.items[3].name === "DANGOTE CEMENT PLC", r.items);
 t("a UK company with an LEI appears once, with the LEI attached", r.items[0].lei === TESCO && !r.items.some((x) => x.src === "lei" && x.lei === TESCO), r.items);
-t("GLEIF item: number, country, status, legal form, date, address", r.items[1].number === "RC 6014" && r.items[1].cc === "NG" && r.items[1].status === "Active" && r.items[1].type === "Public limited company" && r.items[1].created === "1981-07-08" && r.items[1].address === "1 Main Road, Lagos, 100001, NG", r.items[1]);
-t("per-source totals", JSON.stringify(r.sources) === JSON.stringify({ uk: { total: 3 }, lei: { total: 2 } }), r.sources);
+t("GLEIF item: number, country, status, legal form, date, address", r.items[3].number === "RC 6014" && r.items[3].cc === "NG" && r.items[3].status === "Active" && r.items[3].type === "Public limited company" && r.items[3].created === "1981-07-08" && r.items[3].address === "1 Main Road, Lagos, 100001, NG", r.items[3]);
+t("per-source totals", JSON.stringify(r.sources) === JSON.stringify({ no: { total: 1 }, fr: { total: 1 }, uk: { total: 3 }, lei: { total: 2 } }), r.sources);
+t("Norway search item: org number, legal form, address, founded", r.items[1].number === "923609016" && r.items[1].cc === "NO" && r.items[1].type === "Allmennaksjeselskap" && r.items[1].address === "Forusbeen 50, 4035 STAVANGER, Norge" && r.items[1].created === "1972-09-18" && r.items[1].status === "Active", r.items[1]);
+const no = await norwayDetail("923609016");
+t("Norway record: industry, employees, website made absolute", no.industry === "06.100 Utvinning av råolje" && no.employees === 21000 && no.web === "https://www.equinor.com" && /NLOD/.test(no.licence), no);
+const fr = await franceDetail("542051180");
+t("France record: directors (people and firms), NAF code, link", fr.officers.length === 2 && fr.officers[0].name === "Patrick POUYANNE" && fr.officers[1].name === "ERNST & YOUNG AUDIT" && fr.industry === "NAF 70.10Z" && fr.link.endsWith("/542051180"), fr);
 
 const ng = await searchRegistry("plc", { cc: "NG" });
-t("country filter: GLEIF filtered, UK register skipped", ng.items.length === 1 && ng.items[0].cc === "NG" && "off" in ng.sources.uk && calls.some((c) => c.includes("filter%5Bentity.legalAddress.country%5D=NG")), ng);
+t("country filter: GLEIF filtered, UK, Norway and France skipped", ng.items.length === 1 && ng.items[0].cc === "NG" && "off" in ng.sources.uk && "off" in ng.sources.no && "off" in ng.sources.fr && calls.some((c) => c.includes("filter%5Bentity.legalAddress.country%5D=NG")), ng);
 
 const n0 = calls.length; await searchRegistry("PLC");
 t("search cached (case-insensitive)", calls.length === n0, calls.slice(n0));
 
 gleifDown = true;
 const half = await searchRegistry("tesco");
-t("GLEIF down: UK results still come back, GLEIF reports an error", half.items.length === 1 && half.items[0].src === "uk" && "error" in half.sources.lei, half);
+t("GLEIF down: other registers still answer, GLEIF reports an error", half.items[0].src === "uk" && !half.items.some((x) => x.src === "lei") && "error" in half.sources.lei, half);
 gleifDown = false;
 
 const d = await leiDetail(DANGOTE);

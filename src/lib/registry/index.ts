@@ -4,6 +4,8 @@
  *
  *   uk   Companies House (UK), when COMPANIES_HOUSE_API_KEY is set
  *   lei  GLEIF, the worldwide LEI register (no key needed)
+ *   no   Norway, Brønnøysund Register Centre (no key; NLOD 2.0)
+ *   fr   France, recherche-entreprises.api.gouv.fr (no key; Licence Ouverte 2.0)
  *
  * Companies the developer adds in the Data studio live in the shared database
  * (adm_reg) and are searched in the browser, so they are not part of this.
@@ -36,8 +38,48 @@ const titled = (s?: string | null) => (s ? s.replace(/_/g, " ").toLowerCase().re
 /** ACTIVE, or the reason an inactive entity ended (e.g. "Dissolved"). */
 const leiStatus = (e: GleifRecord["attributes"]["entity"]) => e.status === "INACTIVE" ? titled(e.expiration?.reason) || "Inactive" : titled(e.status) || null;
 
-export type RegItem = { src: "uk" | "lei"; id: string; name: string; cc: string | null; number: string | null; status: string | null; type: string | null; created: string | null; address: string; lei?: string };
+export type RegItem = { src: "uk" | "lei" | "no" | "fr"; id: string; name: string; cc: string | null; number: string | null; status: string | null; type: string | null; created: string | null; address: string; lei?: string };
 export type SourceState = { total: number } | { error: string } | { off: string };
+const UA = { "user-agent": "Superfinancials company registry (https://github.com/jamesokpare/Superfinancials)", accept: "application/json" };
+const get = async <T,>(name: string, url: string) => { const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20_000) }); if (r.status === 404) throw Object.assign(new Error(`${name}: not found`), { status: 404 }); if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`); return (await r.json()) as T; };
+
+// --- Norway (Brønnøysund Register Centre, Enhetsregisteret) -----------------------------------------
+type Brreg = { organisasjonsnummer: string; navn?: string; organisasjonsform?: { kode?: string; beskrivelse?: string }; forretningsadresse?: { adresse?: string[]; postnummer?: string; poststed?: string; land?: string }; stiftelsesdato?: string; registreringsdatoEnhetsregisteret?: string; naeringskode1?: { kode?: string; beskrivelse?: string }; antallAnsatte?: number; hjemmeside?: string; konkurs?: boolean; underAvvikling?: boolean; underTvangsavviklingEllerTvangsopplosning?: boolean; slettedato?: string; registrertIMvaregisteret?: boolean };
+const noStatus = (x: Brreg) => (x.slettedato ? "Deleted" : x.konkurs ? "Bankrupt" : x.underAvvikling || x.underTvangsavviklingEllerTvangsopplosning ? "In liquidation" : "Active");
+const noAddr = (x: Brreg) => { const a = x.forretningsadresse; return a ? [...(a.adresse ?? []), [a.postnummer, a.poststed].filter(Boolean).join(" "), a.land].filter(Boolean).join(", ") : ""; };
+const noItem = (x: Brreg): RegItem => ({ src: "no", id: x.organisasjonsnummer, name: x.navn ?? "", cc: "NO", number: x.organisasjonsnummer, status: noStatus(x), type: x.organisasjonsform?.beskrivelse ?? null, created: x.stiftelsesdato ?? x.registreringsdatoEnhetsregisteret ?? null, address: noAddr(x) });
+async function searchNorway(q: string, n: number) {
+  const r = await get<{ _embedded?: { enheter?: Brreg[] }; page?: { totalElements?: number } }>("Brønnøysund", `https://data.brreg.no/enhetsregisteret/api/enheter?${/^\d{9}$/.test(q.replace(/\s/g, "")) ? `organisasjonsnummer=${q.replace(/\s/g, "")}` : `navn=${encodeURIComponent(q)}`}&size=${n}`);
+  return { total: Number(r.page?.totalElements) || 0, items: (r._embedded?.enheter ?? []).map(noItem) };
+}
+export async function norwayDetail(orgnr: string) {
+  return cached(`no:${orgnr}`, async () => {
+    const x = await get<Brreg>("Brønnøysund", `https://data.brreg.no/enhetsregisteret/api/enheter/${encodeURIComponent(orgnr)}`);
+    return { src: "no" as const, id: orgnr, link: `https://data.brreg.no/enhetsregisteret/oppslag/enheter/${orgnr}`, name: x.navn ?? "", cc: "NO", number: orgnr, status: noStatus(x), type: x.organisasjonsform?.beskrivelse ?? null, created: x.stiftelsesdato ?? null, registered: x.registreringsdatoEnhetsregisteret ?? null, address: noAddr(x),
+      industry: x.naeringskode1 ? `${x.naeringskode1.kode} ${x.naeringskode1.beskrivelse ?? ""}`.trim() : null, employees: x.antallAnsatte ?? null, web: x.hjemmeside ? (/^https?:/.test(x.hjemmeside) ? x.hjemmeside : `https://${x.hjemmeside}`) : null, officers: [] as { name: string; role: string; since: string | null }[],
+      registry: "Brønnøysund Register Centre (Enhetsregisteret)", licence: "Norwegian Licence for Open Government Data (NLOD) 2.0" };
+  });
+}
+
+// --- France (recherche-entreprises.api.gouv.fr: SIRENE + RNE) ------------------------------------------
+type FrDir = { nom?: string; prenoms?: string; denomination?: string; qualite?: string; type_dirigeant?: string; annee_de_naissance?: string };
+type Fr = { siren: string; nom_complet?: string; nom_raison_sociale?: string; siege?: { adresse?: string; geo_adresse?: string; libelle_commune?: string; code_postal?: string; activite_principale?: string }; activite_principale?: string; nature_juridique?: string; date_creation?: string; date_fermeture?: string | null; etat_administratif?: string; tranche_effectif_salarie?: string; dirigeants?: FrDir[]; categorie_entreprise?: string };
+const frItem = (x: Fr): RegItem => ({ src: "fr", id: x.siren, name: x.nom_complet ?? x.nom_raison_sociale ?? "", cc: "FR", number: x.siren, status: x.etat_administratif === "C" ? "Closed" : "Active", type: x.categorie_entreprise ? `${x.categorie_entreprise} (nature juridique ${x.nature_juridique ?? "—"})` : x.nature_juridique ?? null, created: x.date_creation ?? null, address: x.siege?.adresse ?? x.siege?.geo_adresse ?? "" });
+async function searchFrance(q: string, n: number) {
+  const r = await get<{ results?: Fr[]; total_results?: number }>("recherche-entreprises", `https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(q)}&per_page=${Math.min(25, n)}`);
+  return { total: Number(r.total_results) || 0, items: (r.results ?? []).map(frItem) };
+}
+export async function franceDetail(siren: string) {
+  return cached(`fr:${siren}`, async () => {
+    const r = await get<{ results?: Fr[] }>("recherche-entreprises", `https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(siren)}&per_page=5`);
+    const x = (r.results ?? []).find((y) => y.siren === siren); if (!x) throw Object.assign(new Error("not found"), { status: 404 });
+    return { src: "fr" as const, id: siren, link: `https://annuaire-entreprises.data.gouv.fr/entreprise/${siren}`, name: x.nom_complet ?? "", cc: "FR", number: siren, status: x.etat_administratif === "C" ? "Closed" : "Active", type: x.nature_juridique ? `Nature juridique ${x.nature_juridique}` : null, created: x.date_creation ?? null, registered: null, address: x.siege?.adresse ?? "",
+      industry: x.activite_principale ? `NAF ${x.activite_principale}` : null, employees: null, web: null,
+      officers: (x.dirigeants ?? []).slice(0, 30).map((d) => ({ name: d.denomination ?? [d.prenoms, d.nom].filter(Boolean).join(" "), role: d.qualite ?? "", since: null })),
+      registry: "Répertoire SIRENE (INSEE) and Registre national des entreprises (INPI)", licence: "Licence Ouverte / Etalab 2.0" };
+  });
+}
+export type NationalCompany = Awaited<ReturnType<typeof norwayDetail>>;
 
 function leiItem(r: GleifRecord): RegItem {
   const e = r.attributes.entity;
@@ -49,11 +91,16 @@ export async function searchRegistry(q: string, { n = 20, cc }: { n?: number; cc
   const iso = isoCountry(cc);
   return cached(`r:${q.toLowerCase()}:${n}:${iso ?? ""}`, async () => {
     const ukOn = !!envKey("COMPANIES_HOUSE_API_KEY") && (!iso || iso === "GB");
-    const [uk, lei] = await Promise.allSettled([
+    const noOn = !iso || iso === "NO", frOn = !iso || iso === "FR";
+    const [uk, lei, no, fr] = await Promise.allSettled([
       ukOn ? searchCompanies(q, n) : Promise.resolve(null),
       createGleif().search(q, n, iso),
+      noOn ? searchNorway(q, Math.min(n, 10)) : Promise.resolve(null),
+      frOn ? searchFrance(q, Math.min(n, 10)) : Promise.resolve(null),
     ]);
-    const sources: Record<"uk" | "lei", SourceState> = {
+    const nat = (on: boolean, r: PromiseSettledResult<{ total: number; items: RegItem[] } | null>): SourceState => (!on ? { off: "Not searched for this country" } : r.status === "fulfilled" ? { total: r.value!.total } : { error: msg(r.reason) });
+    const sources: Record<"uk" | "lei" | "no" | "fr", SourceState> = {
+      no: nat(noOn, no), fr: nat(frOn, fr),
       uk: !ukOn ? { off: iso && iso !== "GB" ? "UK register not searched for this country" : "Companies House is not connected on this server" } : uk.status === "fulfilled" ? { total: uk.value!.total } : { error: msg(uk.reason) },
       lei: lei.status === "fulfilled" ? { total: Number(lei.value.meta?.pagination?.total) || lei.value.data.length } : { error: msg(lei.reason) },
     };
@@ -65,7 +112,11 @@ export async function searchRegistry(q: string, { n = 20, cc }: { n?: number; cc
       if (twin) { twin.lei = x.lei; return false; }
       return true;
     });
-    return { items: [...ukItems, ...leiItems], sources };
+    const natItems = [no, fr].flatMap((r) => (r.status === "fulfilled" && r.value ? r.value.items : []));
+    // A Norwegian or French company that also holds an LEI appears once, as its national record with the LEI attached.
+    const natNo = new Map(natItems.map((x) => [`${x.cc}|${x.number}`, x]));
+    const leiLeft = leiItems.filter((x) => { const twin = x.number ? natNo.get(`${x.cc === "GB" ? "UK" : x.cc}|${x.number.replace(/\s/g, "")}`) : undefined; if (twin) { twin.lei = x.lei; return false; } return true; });
+    return { items: [...ukItems, ...natItems, ...leiLeft], sources };
   });
 }
 const msg = (e: unknown) => String((e as Error)?.message ?? e).replace(/https?:\/\/\S+/g, "").slice(0, 200);

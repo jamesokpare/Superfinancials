@@ -3,6 +3,7 @@
 // pruning, provider errors, dry runs and idempotent re-runs.
 // Run: npm test
 import { runNewsSync } from "../src/lib/news/sync";
+import { OFFICIAL_FEEDS, parseFeed } from "../src/lib/news/sources";
 import { memoryStore } from "../src/lib/market/store";
 
 for (const k of ["MARKETAUX_API_KEY", "NEWSAPI_AI_KEY", "CURRENTS_API_KEY"]) process.env[k] = "test-" + k;
@@ -89,6 +90,23 @@ t("cross-day duplicate merged into the day that holds it", gold.length === 1, go
 
 const r0 = await runNewsSync({ store: memoryStore(), now: NOW, providers: [] });
 t("no providers: nothing written", r0.added === 0 && r0.days.length === 0);
+
+// Official RSS / Atom feeds
+const rss = `<?xml version="1.0"?><rss><channel><title>Fed</title><item><title><![CDATA[Federal Reserve issues FOMC statement]]></title><link>https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm</link><pubDate>Wed, 28 Oct 2026 18:00:00 GMT</pubDate><description>&lt;p&gt;The Committee decided to lower the target range &amp; …&lt;/p&gt;</description></item></channel></rss>`;
+const atom = `<feed xmlns="http://www.w3.org/2005/Atom"><entry><title type="html">ECB keeps rates unchanged</title><link rel="alternate" href="https://www.ecb.europa.eu/press/pr/date/2026/html/ecb.mp261029.en.html"/><updated>2026-10-29T13:15:00Z</updated><summary>Monetary policy decisions</summary></entry></feed>`;
+const p1 = parseFeed(rss), p2 = parseFeed(atom);
+t("RSS item: CDATA title, link, date, tags stripped from summary", p1.length === 1 && p1[0].title === "Federal Reserve issues FOMC statement" && p1[0].url.endsWith("monetary20261028a.htm") && p1[0].t === "Wed, 28 Oct 2026 18:00:00 GMT" && p1[0].sum === "The Committee decided to lower the target range & …", p1);
+t("Atom entry: href link, updated date", p2.length === 1 && p2[0].url.endsWith("ecb.mp261029.en.html") && p2[0].t === "2026-10-29T13:15:00Z", p2);
+const _f = globalThis.fetch;
+globalThis.fetch = (async (input: string | URL | Request) => {
+  const u = String(input instanceof Request ? input.url : input);
+  if (u === OFFICIAL_FEEDS[0].url) return new Response(rss); if (u === OFFICIAL_FEEDS[1].url) return new Response(atom);
+  return new Response("down", { status: 503 });
+}) as typeof fetch;
+const os = memoryStore(); const ro = await runNewsSync({ store: os, now: NOW, providers: ["official"] });
+const oi = (await os.list("mktnews")).filter((d) => d.id.startsWith("day-")).flatMap((d) => (d.data.items as { via: string; src: string; cc: string[] }[]));
+t("official feeds: stored as 'official', publisher and country set, failing feeds don't stop the rest", ro.added === 2 && oi.every((x) => x.via === "official") && oi.some((x) => x.src === "Federal Reserve" && x.cc[0] === "US") && oi.some((x) => x.src === "European Central Bank" && x.cc[0] === "EU") && !ro.errors.official, { ro, oi });
+globalThis.fetch = _f;
 
 console.log(fails ? `\n${fails} news-sync test(s) failed` : "\nAll news-sync tests passed");
 process.exit(fails ? 1 : 0);

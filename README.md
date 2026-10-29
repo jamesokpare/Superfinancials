@@ -202,7 +202,9 @@ lists, per provider, how many instruments it resolved and any error.
 The Market news page now leads with **Latest headlines** from the connected
 news providers. A news sync (`src/lib/news/`) pulls recent articles from
 Marketaux (tickers and sentiment), NewsAPI.ai (broad business coverage) and
-Currents, plus African-markets queries, and stores them in `mktnews/day-<date>`
+Currents, plus African-markets queries, and the press-release feeds of official
+sources (Federal Reserve, ECB, Bank of England, BLS, BEA, EIA, SEC, IMF; no key,
+filter chip "Official sources"), and stores them in `mktnews/day-<date>`
 documents. The same story from several providers is kept once (matched by URL,
 then title) and headlines older than 14 days are removed.
 
@@ -273,12 +275,14 @@ npm run fundamentals:sync -- --budget=64
 
 ## Company registry (global)
 
-**Private markets › Companies & deals › Company registry** searches three
+**Private markets › Companies & deals › Company registry** searches five
 sources at once and lists them together, each labelled with where it came from:
 
 | Source | Coverage | How |
 |---|---|---|
 | Data desk | Companies you add in the Data studio | Shared database (`adm_reg`), searched in the browser |
+| Brønnøysund | Norway, live (no key, NLOD 2.0) | `searchRegistry` / `GET /api/companies/no/<org number>` (`src/lib/registry/`) |
+| recherche-entreprises (SIRENE + RNE) | France, live (no key, Licence Ouverte 2.0), with directors | `GET /api/companies/fr/<SIREN>` |
 | Companies House | UK, live | `GET /api/uk-companies?q=`, `GET /api/uk-companies/<number>` (`src/lib/ukreg/`, needs `COMPANIES_HOUSE_API_KEY`) |
 | GLEIF | ~2.9M legal entities with an LEI in 200+ countries, live | `GET /api/companies?q=&cc=`, `GET /api/companies/lei/<LEI>` (`src/lib/registry/`, no key) |
 
@@ -350,7 +354,12 @@ that indicator for that country.
 | World Bank | none | 10 annual indicators for ~105 countries (GDP growth, GDP, GDP per head, inflation, unemployment, current account, exports, FDI, government debt, population) | Country data |
 | BIS | none | Central-bank policy rates, ~40 countries, monthly | Country data, macro panels (policy rate) |
 | ECB | none | Euro-area HICP inflation and deposit rate | Country data, macro panels |
-| OECD | none | Monthly CPI inflation, ~37 economies | Country data, macro panels (CPI) |
+| OECD | none | Monthly CPI inflation, ~37 economies (one all-areas request, retried when OECD is overloaded) | Country data, macro panels (CPI) |
+| BIS | none | Monthly CPI inflation, ~64 economies (feeds the CPI panel where OECD doesn't) | Country data, macro panels |
+| World Bank Pink Sheet | none | Monthly averages for TTF gas (converted to EUR/MWh), Japan LNG, Australian coal, aluminium, nickel, zinc, iron ore, palm oil, urea, DAP | Commodities (those instruments are renamed "monthly average") |
+| SMARD (Bundesnetzagentur) | none | German day-ahead power price, daily average | Commodities (German power) |
+| Eurostat, BLS (ICS) | none | Euro-indicator and U.S. labour-statistics release dates | Market calendars |
+| EIA | `EIA_API_KEY` (free) | U.S. crude, gasoline, distillate inventories and gas storage, weekly | Country data (United States) |
 | FRED | `FRED_API_KEY` | U.S. release dates (CPI, payrolls, GDP, PCE …), next 45 days | Market calendars |
 | U.S. Treasury FiscalData | none | Upcoming Treasury auctions | Market calendars |
 | FMP, else EODHD | `FMP_API_KEY` / `EODHD_API_KEY` | Economic calendar with consensus and actuals; IPOs | Market calendars |
@@ -364,10 +373,17 @@ skipped; issuers with no filing for a year are retired, and the newest 500 kept.
 The FMP and EODHD calendars depend on your plans; if an endpoint is not included,
 the run reports it and the other sources still update.
 
+Price series for instruments are written to `adm_inst/<instrument id>` and shown as DESK prices;
+in real-data mode an instrument's history starts at its first real price (no modelled history, no
+simulated volumes).
+
 Deliberately left out: IMF data (commercial reuse needs written permission),
 scraped sites (TradingEconomics, Investing.com) and proprietary series (PMIs,
 Baltic Dry, JKM). Nigerian T-bill, interbank and FMDQ rates have no free licensed
-source.
+source. FRED's API terms prohibit storing FRED data and passing it on; the market sync still
+stores some FRED series (yields, volatility indices, FX fallbacks, U.S. CPI), which should move to
+the producing agencies (Treasury, BLS, BEA, Cboe via a licensed provider) or be licensed. The full
+source research, with licences and a ranked plan, is in `docs/data-sources-research.md`.
 
 ## CI and monitoring (GitHub Actions)
 

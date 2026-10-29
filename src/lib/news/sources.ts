@@ -8,7 +8,7 @@ import { createCurrents } from "@/lib/providers/currents";
 import { createMarketaux } from "@/lib/providers/marketaux";
 import { createNewsApiAi } from "@/lib/providers/newsapi-ai";
 
-export type NewsProvider = "marketaux" | "newsapi" | "currents";
+export type NewsProvider = "marketaux" | "newsapi" | "currents" | "official";
 
 export type NewsItem = {
   /** Stable id: a hash of the canonical URL. */
@@ -118,5 +118,43 @@ export async function currentsNews(since: Date): Promise<NewsItem[]> {
       if (it) out.push(it);
     }
   }
+  return out;
+}
+
+// --- Official sources: press-release RSS/Atom feeds of central banks, statistics agencies and regulators ---------
+/** Public feeds (no key). Headlines link to the publisher; U.S. federal releases are public domain. */
+export const OFFICIAL_FEEDS: { url: string; src: string; cc: string[] }[] = [
+  { url: "https://www.federalreserve.gov/feeds/press_all.xml", src: "Federal Reserve", cc: ["US"] },
+  { url: "https://www.ecb.europa.eu/rss/press.html", src: "European Central Bank", cc: ["EU"] },
+  { url: "https://www.bankofengland.co.uk/rss/news", src: "Bank of England", cc: ["GB"] },
+  { url: "https://www.bls.gov/feed/bls_latest.rss", src: "U.S. Bureau of Labor Statistics", cc: ["US"] },
+  { url: "https://apps.bea.gov/rss/rss.xml", src: "U.S. Bureau of Economic Analysis", cc: ["US"] },
+  { url: "https://www.eia.gov/rss/todayinenergy.xml", src: "U.S. Energy Information Administration", cc: ["US"] },
+  { url: "https://www.sec.gov/news/pressreleases.rss", src: "U.S. SEC", cc: ["US"] },
+  { url: "https://www.imf.org/en/News/rss?language=eng", src: "IMF", cc: [] },
+];
+const unxml = (s: string) => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/&amp;/g, "&").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); // second tag pass: summaries are often escaped HTML
+const tagOf = (x: string, names: string[]) => { for (const n of names) { const m = x.match(new RegExp(`<${n}(?:\\s[^>]*)?>([\\s\\S]*?)</${n}>`, "i")); if (m) return m[1]; } return ""; };
+/** RSS 2.0 <item> or Atom <entry> → title, link, date, summary. */
+export function parseFeed(xml: string): { title: string; url: string; t: string; sum: string }[] {
+  const blocks = [...xml.matchAll(/<(item|entry)[\s>][\s\S]*?<\/\1>/gi)].map((m) => m[0]);
+  return blocks.map((b) => {
+    const href = b.match(/<link[^>]*href="([^"]+)"/i)?.[1];
+    return { title: unxml(tagOf(b, ["title"])), url: unxml(href ?? tagOf(b, ["link", "guid"])), t: unxml(tagOf(b, ["pubDate", "published", "updated", "dc:date"])), sum: unxml(tagOf(b, ["description", "summary", "content"])) };
+  });
+}
+export async function officialNews(since: Date): Promise<NewsItem[]> {
+  const out: NewsItem[] = []; const errors: string[] = [];
+  await Promise.all(OFFICIAL_FEEDS.map(async (f) => {
+    try {
+      const r = await fetch(f.url, { headers: { "user-agent": "Mozilla/5.0 (compatible; Superfinancials news sync; +https://github.com/jamesokpare/Superfinancials)", accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*" }, signal: AbortSignal.timeout(30_000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      for (const x of parseFeed(await r.text())) {
+        const it = item({ t: x.t, title: x.title, sum: x.sum, url: x.url, src: f.src, via: "official", tk: [], cc: f.cc, sent: null });
+        if (it && Date.parse(it.t) >= since.getTime()) out.push(it);
+      }
+    } catch (e) { errors.push(`${f.src}: ${(e as Error).message}`); }
+  }));
+  if (!out.length && errors.length === OFFICIAL_FEEDS.length) throw new Error(errors.slice(0, 3).join("; "));
   return out;
 }
