@@ -291,7 +291,7 @@ export async function runMarketSync(opts: SyncOptions = {}): Promise<SyncReport>
   if (legacyHist.length) await store.remove("mkt", legacyHist.map(([id]) => id));
   if (admWrites.length) { await store.upsert("adm_inst", admWrites); await store.remove("adm_inst", admDeletes); }
   if (hits.size) await store.upsert("mkt", [{ id: dayId, data: { type: "day", date: runDay, checked, q } }]);
-  await store.upsert("mkt", [{ id: "_meta", data: { type: "meta", checked, n: Object.keys(q).length, note } }]);
+  await store.upsert("mkt", [{ id: "_meta", data: { type: "meta", checked, n: Object.keys(q).length, resolved: hits.size, note } }]);
   await store.remove("mkt", compacted.filter((id) => id !== dayId));
   return report;
 }

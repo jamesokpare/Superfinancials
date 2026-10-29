@@ -73,10 +73,10 @@ mocked responses.
   confirm against real responses.
 - **Free-plan limits.** FMP batch quotes, EODHD fundamentals and calendars may need
   paid plans; the syncs fall back, but coverage depends on the plans.
-- **Sync health.** Cron failures are only visible in the Vercel logs and the
-  `_meta` notes. Add alerting, and show each sync's last run on the Data sources page.
-- **CI.** There is no GitHub Actions workflow; `npm test`, lint and typecheck only
-  run locally. Add one (it needs no secrets: the tests use mocked APIs).
+- ✅ **CI**: GitHub Actions runs lint, typecheck, tests and build on every PR.
+- ✅ **Sync health**: a daily workflow fails (and emails) when a sync is stale or empty.
+  Still to do: show each sync's last run on the Data sources page.
+- ✅ **Live dry run**: the "Data dry run" workflow runs the syncs against the real APIs.
 
 ## Remaining: data still simulated
 

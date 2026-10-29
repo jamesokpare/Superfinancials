@@ -6,10 +6,16 @@
 import { existsSync } from "node:fs";
 import { runFundamentalsSync } from "../src/lib/fundamentals/sync";
 import { sql } from "../src/lib/db/postgres";
+import { memoryStore } from "../src/lib/market/store";
 
 for (const f of [".env.local", ".env"]) if (existsSync(f)) process.loadEnvFile(f);
+const dry = process.argv.includes("--dry-run");
+const noDb = !process.env.DATABASE_URL && !(process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL);
+// A dry run writes nothing, so without a database it runs against an empty in-memory copy.
+const store = dry && noDb ? memoryStore() : undefined;
+if (store) console.log("No database configured: dry run against an empty in-memory store (as on a first run).\n");
 const arg = (k: string) => process.argv.find((a) => a.startsWith(`--${k}`))?.split("=")[1];
-const r = await runFundamentalsSync({
+const r = await runFundamentalsSync({ store,
   dryRun: process.argv.includes("--dry-run"),
   only: arg("only")?.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
   budget: arg("budget") ? Number(arg("budget")) : undefined,
