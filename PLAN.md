@@ -21,8 +21,9 @@ We move it in stages so the app keeps working at every step.
 
 ## Phase 2: backend hardening
 
-- Move each user's workspace (watchlists, notes, alerts, graphs, which are still
-  in `localStorage` under `sf.ws.<email>`) into `data/users/<id>/…` documents.
+- ✅ Each signed-in user's workspace is saved in `data/users/<id>/workspace` and follows them across
+  devices (`public/legacy/workspace.js`); the browser copy is a cache. Still local: the security event
+  log (`sf.audit.<profile>`) and local profiles, which have no account.
 - Enforce plan limits and AI access on the server (today the client checks them).
 - Rate-limit `/api/ai`; log usage per user.
 - Cookie-based Supabase sessions (`@supabase/ssr`) so server components can

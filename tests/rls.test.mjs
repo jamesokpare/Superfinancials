@@ -48,6 +48,11 @@ await t("B updates a member doc in its own org", await as(B, n(`update docs set 
 await t("admin may modify any org", await as(A, n(`update docs set data='{}' where path='orgs/${B}'`)), 1); // admin may
 await t("B private data", await as(B, n(`insert into docs(path,parent,id) values ('data/users/${B}/ws','data/users/${B}','ws')`)), 1);
 await t("A cannot read B private (admin too)", await as(A, rows(`select path from docs where path like 'data/%'`)), []);
+// Workspaces (public/legacy/workspace.js): data/users/<uid>/workspace, readable and writable by its owner only.
+await t("B saves own workspace", await as(B, n(`insert into docs(path,parent,id,data) values ('data/users/${B}/workspace','data/users/${B}','workspace','{"type":"workspace","savedAt":1,"ws":{"v":1}}') on conflict (path) do update set data = excluded.data`)), 1);
+await t("B reads own workspace", await as(B, rows(`select path from docs where path = 'data/users/${B}/workspace'`)), [{ path: `data/users/${B}/workspace` }]);
+await t("anon cannot read a workspace", await as(null, rows(`select path from docs where path like 'data/users/%/workspace'`)), []);
+await t("B cannot write A's workspace", (await as(B, rows(`insert into docs(path,parent,id,data) values ('data/users/${A}/workspace','data/users/${A}','workspace','{}')`))).startsWith("ERR 42501"), true);
 await t("bad path shape rejected", (await as(A, rows("insert into docs(path,parent,id) values ('mkt','','mkt')"))).startsWith("ERR"), true);
 await q(`update docs set data='{"a":{"x":1,"y":[1,2]},"k":1}' where path='orgs/${B}'`);
 await t("docs_merge deep merge", await as(B, async () => { await q(`select docs_merge($1, $2::jsonb)`, [`orgs/${B}`, '{"a":{"y":[3],"z":2},"n":5}']); return (await q(`select data from docs where path=$1`, [`orgs/${B}`])).rows[0].data; }), { a: { x: 1, y: [3], z: 2 }, k: 1, n: 5 });

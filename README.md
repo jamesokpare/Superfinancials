@@ -101,6 +101,19 @@ artifact:
 - `pk/<id>`: each person's public encryption key; signed-in users read, only the owner writes.
 - `data/users/<id>/…`: private to that user.
 
+**Workspaces.** A signed-in user's workspace (watchlists, notes, alerts, graphs, dashboards, portfolio,
+screens, models, clients, decks and preferences) is one document, `data/users/<id>/workspace`
+(`{ type, v, savedAt, dev, ws }`), written by `public/legacy/workspace.js`. The browser keeps a copy in
+`localStorage` (`sf.ws.<email>`) so the app opens at once and works offline:
+- on sign-in the newer copy wins (by `savedAt`); a browser workspace with no saved copy is uploaded;
+- edits are written about 1.5 s after the last change, and at once when the tab is hidden or closed;
+  opening the app writes nothing, because `savedAt` changes only when the content does;
+- a save from another device or tab replaces the open workspace when there are no unsaved edits
+  (otherwise the later save wins);
+- an encrypted workspace (Settings › workspace lock) is stored encrypted, so the database holds only ciphertext.
+
+Local profiles (no account) stay in the browser only.
+
 ## Data connections
 
 Server-side clients for every external data provider live in
