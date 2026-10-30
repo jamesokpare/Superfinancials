@@ -321,7 +321,9 @@ company that also has an LEI is shown once, as its UK record.
   Officer names on a UK company record link there too.
 - **UK records** show status, type, incorporation, registered office, SIC
   codes, accounts and confirmation-statement deadlines, previous names,
-  officers, people with significant control, filings (with PDFs) and charges.
+  officers, people with significant control, filings (with PDFs), charges and **share allotments**
+  (form SH01: date and share capital after each allotment, with the filed document; new shares are
+  usually a funding round). Private companies with a UK company number show the same allotments.
 - **GLEIF records** show the legal name, other names, legal and HQ addresses,
   the local registration number and the registry that holds it, legal form,
   status, LEI renewal, direct and ultimate parents, and subsidiaries.
@@ -413,7 +415,7 @@ that indicator for that country.
 | World Bank Pink Sheet | none | Read from the monthly workbook `CMO-Historical-Data-Monthly.xlsx` (found on the commodity-markets page; the API no longer serves it). Monthly averages for TTF gas (converted to EUR/MWh), Japan LNG, Australian coal, aluminium, nickel, zinc, iron ore, palm oil, urea, DAP | Commodities (those instruments are renamed "monthly average") |
 | SMARD (Bundesnetzagentur) | none | German day-ahead power price, daily average | Commodities (German power) |
 | Eurostat, BLS (ICS) | none (BLS: `SEC_USER_AGENT`) | Eurostat headline data releases (`/o/calendars/eventsIcal`) and U.S. labour-statistics release dates. BLS blocks robots without a contact address, so it is only asked when `SEC_USER_AGENT` holds one | Market calendars |
-| EIA | `EIA_API_KEY` (free) | U.S. crude, gasoline, distillate inventories and gas storage, weekly | Country data (United States) |
+| EIA | `EIA_API_KEY` (free) | Weekly: crude, gasoline, distillate, Cushing and SPR stocks, crude production, imports, exports, products supplied, refinery utilization, gas storage. Daily: Henry Hub spot. Monthly: dry gas production, net electricity generation | Country data (United States) |
 | FRED | `FRED_API_KEY` | U.S. release dates (CPI, payrolls, GDP, PCE …), next 45 days | Market calendars |
 | U.S. Treasury FiscalData | none | Upcoming Treasury auctions | Market calendars |
 | FMP, else EODHD | `FMP_API_KEY` / `EODHD_API_KEY` | Economic calendar with consensus and actuals; IPOs | Market calendars |

@@ -81,7 +81,7 @@ export const MACRO_SOURCES: { id: MacroSourceId; name: string; needs?: string; g
   { id: "release-calendars", name: "Eurostat and BLS release calendars", run: async (now) => ({ events: await icsCalendars(now) }) },
   { id: "commodities", name: "World Bank commodity prices", run: async (now) => ({ instruments: await pinkSheet(now) }) },
   { id: "power", name: "SMARD German power price", run: async () => ({ instruments: await smardPower() }) },
-  { id: "eia", name: "EIA energy inventories", needs: "EIA_API_KEY", run: async () => ({ series: await eiaInventories() }) },
+  { id: "eia", name: "EIA energy data (petroleum, natural gas, electricity)", needs: "EIA_API_KEY", run: async () => ({ series: await eiaInventories() }) },
   // Official rates (run by the second daily cron, ?group=rates, so each run stays inside the time limit)
   { id: "treasury-curve", name: "U.S. Treasury yield curve", group: "rates", run: async (now) => ({ instruments: await treasuryCurve(now) }) },
   { id: "nyfed", name: "New York Fed SOFR and EFFR", group: "rates", run: async (now) => nyFed(now) },

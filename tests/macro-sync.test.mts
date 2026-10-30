@@ -102,7 +102,12 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     if (url.pathname.endsWith("_day_1792000000000.json")) return json({ series: [[1793055600000, 95.2], [1793142000000, 101.75], [1793228400000, null]] }); // 27, 28, 29 Oct 2026 00:00 Berlin
     return json({ series: [] });
   }
-  if (url.hostname === "api.eia.gov") return json({ response: { data: url.pathname.endsWith("PET.WCESTUS1.W") ? [{ period: "2026-10-23", value: 420500 }, { period: "2026-10-16", value: 421800 }] : [] } });
+  if (url.hostname === "api.eia.gov") {
+    if (url.pathname.endsWith("PET.WCSSTUS1.W")) return json({ error: "boom" }, 500);
+    if (url.pathname.endsWith("ELEC.GEN.ALL-US-99.M")) return json({ response: { data: [{ period: "2026-08", value: 421337.5 }, { period: "2026-07", value: "" }] } });
+    if (url.pathname.endsWith("NG.RNGWHHD.D")) return json({ response: { data: [{ period: "2026-10-28", value: "3.12" }] } });
+    return json({ response: { data: url.pathname.endsWith("PET.WCESTUS1.W") ? [{ period: "2026-10-23", value: 420500 }, { period: "2026-10-16", value: 421800 }] : [] } });
+  }
   if (url.hostname === "www.sec.gov") {
     secUA.push(new Headers((input instanceof Request ? input.headers : undefined) ?? init?.headers).get("user-agent") ?? "");
     if (sec403) return new Response("Your Request Originates from an Undeclared Automated Tool", { status: 403 });
@@ -231,6 +236,9 @@ fmpPremium = true;
 const fb = await runMacroSync({ store: memoryStore(), now: NOW, only: ["econ-calendar", "ipos", "dividends"] });
 t("FMP plan error → EODHD answers the economic and IPO calendars", fb.sources["econ-calendar"].events === 1 && fb.sources.ipos.events === 1 && fb.sources.dividends.events === 2, fb.sources);
 fmpPremium = false;
+// EIA: weekly, daily and monthly series; one failing series loses only that one
+const em = memoryStore(); const er = await runMacroSync({ store: em, now: NOW, only: ["eia"] }); const ES = new Map((await em.list("adm_series")).map((d) => [d.id, d.data as { d?: string[]; v?: number[]; freq?: string; unit?: string }]));
+t("EIA: crude stocks in million barrels, Henry Hub daily, power generation monthly in TWh at month end", JSON.stringify(ES.get("US.CRUDEINV")?.v) === "[421.8,420.5]" && ES.get("US.HENRYHUB")?.v?.[0] === 3.12 && ES.get("US.HENRYHUB")?.freq === "D" && JSON.stringify(ES.get("US.POWERGEN")?.d) === '["2026-08-31"]' && ES.get("US.POWERGEN")?.v?.[0] === 421.338 && ES.get("US.POWERGEN")?.unit === "TWh" && !ES.has("US.SPRINV") && !er.sources.eia.error, { keys: [...ES.keys()], src: er.sources.eia });
 // IMF projections and NBER recession dates
 const im = memoryStore(); const ir = await runMacroSync({ store: im, now: NOW, only: ["imf", "nber"] }); const IS = new Map((await im.list("adm_series")).map((d) => [d.id, d.data]));
 const usg = IS.get("US.GDPF") as { d?: string[]; v?: number[]; src?: string; notes?: string } | undefined;

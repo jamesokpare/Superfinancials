@@ -105,7 +105,8 @@ mocked responses.
   headlines are attached as possible catalysts, but causes stay unconfirmed.
 - **Private markets.** Data-desk entries and U.S. Form D private placements (amount raised,
   no valuation). Still missing: priced rounds and valuations, fund performance, non-U.S.
-  rounds (UK Companies House SH01 share-allotment filings are a candidate), operating KPIs.
+  rounds (UK SH01 share allotments are now on UK records and on desk companies with a company number,
+  dates only; finding them across all UK companies needs the Companies House streaming API), operating KPIs.
 - **Not connected anywhere** (labelled in the app): options and implied volatility, OIS and
   policy pricing, credit ratings and CDS, FX forwards/NDFs and cross-currency basis,
   inflation swaps, shipping and energy fundamentals. (IMF projections, NBER recession dates, BIS data and

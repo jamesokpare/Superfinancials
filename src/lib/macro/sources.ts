@@ -393,20 +393,41 @@ export async function smardPower(): Promise<InstSeries[]> {
 
 // --- U.S. energy inventories ----------------------------------------------------------------
 /** U.S. EIA weekly inventories (API v2, free key in EIA_API_KEY). Public domain. */
-export const EIA_SERIES: { id: string; code: string; name: string; unit: string }[] = [
-  { id: "PET.WCESTUS1.W", code: "CRUDEINV", name: "U.S. commercial crude oil inventories (ex SPR)", unit: "million barrels" },
-  { id: "PET.WGTSTUS1.W", code: "GASOLINEINV", name: "U.S. total motor gasoline inventories", unit: "million barrels" },
-  { id: "PET.WDISTUS1.W", code: "DISTILLATEINV", name: "U.S. distillate fuel oil inventories", unit: "million barrels" },
-  { id: "NG.NW2_EPG0_SWO_R48_BCF.W", code: "NATGASSTOR", name: "U.S. working gas in underground storage (Lower 48)", unit: "Bcf" },
+/** EIA series (API v2 /seriesid). `k` converts EIA's unit to `unit` (e.g. thousand barrels → million barrels). Public domain. */
+export const EIA_SERIES: { id: string; code: string; name: string; unit: string; freq: "D" | "W" | "M"; k?: number; cat?: MacroSeries["cat"] }[] = [
+  // Weekly Petroleum Status Report
+  { id: "PET.WCESTUS1.W", code: "CRUDEINV", name: "U.S. commercial crude oil inventories (ex SPR)", unit: "million barrels", freq: "W", k: 1e-3 },
+  { id: "PET.WGTSTUS1.W", code: "GASOLINEINV", name: "U.S. total motor gasoline inventories", unit: "million barrels", freq: "W", k: 1e-3 },
+  { id: "PET.WDISTUS1.W", code: "DISTILLATEINV", name: "U.S. distillate fuel oil inventories", unit: "million barrels", freq: "W", k: 1e-3 },
+  { id: "PET.W_EPC0_SAX_YCUOK_MBBL.W", code: "CUSHINGINV", name: "Crude oil stocks at Cushing, Oklahoma (WTI delivery point)", unit: "million barrels", freq: "W", k: 1e-3 },
+  { id: "PET.WCSSTUS1.W", code: "SPRINV", name: "U.S. Strategic Petroleum Reserve stocks", unit: "million barrels", freq: "W", k: 1e-3 },
+  { id: "PET.WCRFPUS2.W", code: "CRUDEPROD", name: "U.S. crude oil field production", unit: "million b/d", freq: "W", k: 1e-3, cat: "gr" },
+  { id: "PET.WCRIMUS2.W", code: "CRUDEIMP", name: "U.S. crude oil imports", unit: "million b/d", freq: "W", k: 1e-3, cat: "ex" },
+  { id: "PET.WCREXUS2.W", code: "CRUDEEXP", name: "U.S. crude oil exports", unit: "million b/d", freq: "W", k: 1e-3, cat: "ex" },
+  { id: "PET.WRPUPUS2.W", code: "PRODSUPPLIED", name: "U.S. total petroleum products supplied (demand)", unit: "million b/d", freq: "W", k: 1e-3, cat: "gr" },
+  { id: "PET.WPULEUS3.W", code: "REFUTIL", name: "U.S. refinery utilization", unit: "%", freq: "W", cat: "gr" },
+  // Natural gas
+  { id: "NG.NW2_EPG0_SWO_R48_BCF.W", code: "NATGASSTOR", name: "U.S. working gas in underground storage (Lower 48)", unit: "Bcf", freq: "W" },
+  { id: "NG.RNGWHHD.D", code: "HENRYHUB", name: "Henry Hub natural gas spot price", unit: "US$/MMBtu", freq: "D" },
+  { id: "NG.N9070US2.M", code: "NATGASPROD", name: "U.S. dry natural gas production", unit: "Bcf", freq: "M", k: 1e-3, cat: "gr" },
+  // Electricity
+  { id: "ELEC.GEN.ALL-US-99.M", code: "POWERGEN", name: "U.S. net electricity generation, all sources", unit: "TWh", freq: "M", k: 1e-3, cat: "gr" },
 ];
+const EIA_FREQ = { D: "daily", W: "weekly", M: "monthly" } as const;
+/** One request per series; one failing series loses only that one. */
 export async function eiaInventories(): Promise<MacroSeries[]> {
-  const key = requireKey("EIA", "EIA_API_KEY"); const out: MacroSeries[] = [];
+  const key = requireKey("EIA", "EIA_API_KEY"); const out: MacroSeries[] = []; const errors: string[] = [];
   for (const s of EIA_SERIES) {
-    const r = await getJson<{ response?: { data?: { period?: string; value?: number | string | null }[] } }>("EIA", buildUrl("https://api.eia.gov/v2", `/seriesid/${s.id}`, { api_key: key, length: 260 }));
-    const scale = s.unit === "million barrels" ? 1e-3 : 1; // EIA reports thousand barrels
-    const pts = (r.response?.data ?? []).flatMap((x) => { const v = Number(x.value); return x.period && /^\d{4}-\d{2}-\d{2}$/.test(x.period) && x.value != null && Number.isFinite(v) ? [{ t: x.period, v: Number((v * scale).toFixed(2)) }] : []; });
-    if (pts.length) out.push({ cc: "US", code: s.code, name: s.name, unit: s.unit, cat: "mk", freq: "W", src: "U.S. Energy Information Administration", url: "https://www.eia.gov/opendata/", notes: `EIA series ${s.id}, weekly. Public domain.`, points: sortPts(pts) });
+    let r: { response?: { data?: { period?: string; value?: number | string | null }[] } };
+    try { r = await getJson("EIA", buildUrl("https://api.eia.gov/v2", `/seriesid/${s.id}`, { api_key: key, length: s.freq === "M" ? 120 : 260 })); }
+    catch (e) { errors.push(`${s.id}: ${(e as Error).message}`); continue; }
+    const pts = (r.response?.data ?? []).flatMap((x) => {
+      const v = Number(x.value); const p = String(x.period ?? ""); const t = /^\d{4}-\d{2}-\d{2}$/.test(p) ? p : /^\d{4}-\d{2}$/.test(p) ? periodEnd(p) : null;
+      return t && x.value != null && x.value !== "" && Number.isFinite(v) ? [{ t, v: Number((v * (s.k ?? 1)).toFixed(3)) }] : [];
+    });
+    if (pts.length) out.push({ cc: "US", code: s.code, name: s.name, unit: s.unit, cat: s.cat ?? "mk", freq: s.freq, src: "U.S. Energy Information Administration", url: `https://www.eia.gov/opendata/browser/`, notes: `EIA series ${s.id}, ${EIA_FREQ[s.freq]}. Public domain.`, points: sortPts(pts) });
   }
+  if (errors.length === EIA_SERIES.length) throw new ProviderError("EIA", errors[0]);
   return out;
 }
 
