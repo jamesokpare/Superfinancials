@@ -58,6 +58,17 @@ jobs:
       - name: Provider keys
         continue-on-error: true
         run: npm run -s providers:check 2>&1 | tee providers.txt
+      - name: Provider response samples (one real response per endpoint, keys removed)
+        continue-on-error: true
+        run: npm run -s providers:samples 2>&1 | tee samples.txt
+      - name: Upload provider samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-samples
+          path: samples/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Market prices (dry run)
         continue-on-error: true
         run: set -o pipefail; npm run -s market:sync -- --dry-run 2>&1 | tee market.txt
@@ -79,6 +90,7 @@ jobs:
       - name: Summary
         if: always()
         run: |
+          [ -f samples/SUMMARY.md ] && cat samples/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
           for f in providers market news fundamentals macro africa filings; do
             [ -f "$f.txt" ] || continue
             { echo "## ${f^}"; echo '```'; cat "$f.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
