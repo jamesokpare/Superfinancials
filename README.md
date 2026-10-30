@@ -421,6 +421,9 @@ that indicator for that country.
 | FMP, else EODHD | `FMP_API_KEY` / `EODHD_API_KEY` | Economic calendar with consensus and actuals; IPOs | Market calendars |
 | FMP, else EODHD | `FMP_API_KEY` / `EODHD_API_KEY` | Ex-dividend dates for the tracked U.S. stocks and ETFs | Market calendars |
 | IMF World Economic Outlook | none | Projections for this year and five years ahead (real GDP growth, inflation, unemployment, government debt, current account, fiscal balance) and fiscal-balance history, ~100 countries (DataMapper API) | Country data (series named "IMF projection") |
+| Central-bank calendars (curated, `src/lib/macro/cbcal.ts`) | none | Decision dates of 15 central banks from their official calendars, each linked; reviewed yearly | Market calendars |
+| FRED, credited to each publisher | `FRED_API_KEY` | 5y/10y breakevens and 5y5y forward; SOFR − 3M bill and AA financial CP − 3M bill spreads (TED replacements); Philadelphia, Empire State and Dallas Fed manufacturing surveys (ISM stand-ins). Series whose owners restrict reuse (e.g. ICE BofA) are skipped | Country data (United States) |
+| Market proxies (EODHD) | `EODHD_API_KEY` | Labelled proxy instruments for licensed benchmarks: Sprott Physical Uranium Trust, URNM, LIT, KRBN, BDRY, BWET, DJP, GSG | Search, security pages (desk instruments `AD.PX.*`) |
 | NBER via FRED (`USREC`) | `FRED_API_KEY` | Official U.S. recession months since 1948 | Country data; Economics › macro dynamics shades NBER recessions for the U.S. |
 | EODHD | `EODHD_API_KEY` | Stock splits (and reverse splits) for the tracked U.S. stocks and ETFs, next 90 days | Market calendars ("Stock split") |
 | SEC EDGAR (Form D) | `SEC_USER_AGENT` ("Company contact@domain"; skipped without it) | U.S. private placements: issuer, sector, state, year founded, amount raised, related persons. Pooled funds (venture, private equity, hedge): type, amount offered and sold, investors, minimum | Private companies, Deal flow; Fund performance › **Funds raising now** |
@@ -466,6 +469,17 @@ material agreements …), proxies and registration statements from the last two 
 8-Ks with item 2.02 are marked as earnings releases and get a link to the press release (exhibit 99.1, found
 once from the filing's file list and kept). Each U.S. equity page has an **SEC filings** panel with the latest
 earnings release and the filing list, loaded when the page opens.
+
+## Every UK share allotment
+
+`GET /api/cron/uk-allotments` (daily 01:50 UTC; `npm run uk:allotments`) reads the Companies House **streaming
+API** (`COMPANIES_HOUSE_STREAM_KEY`, a separate Streaming API key from the Developer Hub) for up to four
+minutes, resuming from the last timepoint, and keeps every SH01 filing in `ukalloc/d-<date>` for 60 days, with
+company names looked up through the REST key. The Company registry page lists the last seven days. On Vercel
+Hobby the job runs once a day for at most 5 minutes; Vercel Pro or a GitHub Actions schedule can run it more often.
+
+See `docs/data-gaps-2026-10.md` for the remaining gaps, the free sources still to wire, and the paid options
+with prices and licence notes.
 
 ## CI and monitoring (GitHub Actions)
 

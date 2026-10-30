@@ -42,6 +42,8 @@ function shape(x: unknown, path = "", out: string[] = [], depth = 0): string[] {
   return out;
 }
 
+/** A plain GET returning JSON (for endpoints the client libraries don't cover). */
+async function raw(url: string): Promise<unknown> { const r = await fetch(url, { signal: AbortSignal.timeout(30_000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }
 type Probe = [provider: string, endpoint: string, env: string | null, fn: () => Promise<unknown>];
 const probes: Probe[] = [
   // Mansa API (NGX = "nigeria")
@@ -88,6 +90,17 @@ const probes: Probe[] = [
   ["eodhd", "calendar-earnings", "EODHD_API_KEY", () => createEodhd().calendar.earnings({ symbols: "AAPL.US", from: day(-120), to: day(120) })],
   ["eodhd", "fundamentals-AAPL-highlights", "EODHD_API_KEY", () => createEodhd().fundamentals("AAPL.US", { filter: "Highlights" })],
   ["eodhd", "fundamentals-DANGCEM-XNSA", "EODHD_API_KEY", () => createEodhd().fundamentals("DANGCEM.XNSA", { filter: "General" })],
+  // EODHD credit & sovereign risk (Damodaran-sourced; Fundamentals or All-In-One plan)
+  ["eodhd", "credit-ratings", "EODHD_API_KEY", () => raw(`https://eodhd.com/api/credit-risk/sovereign/credit-ratings?api_token=${envKey("EODHD_API_KEY")}&fmt=json`)],
+  ["eodhd", "cds-spreads", "EODHD_API_KEY", () => raw(`https://eodhd.com/api/credit-risk/sovereign/cds-spreads?api_token=${envKey("EODHD_API_KEY")}&fmt=json`)],
+  ["eodhd", "proxy-SRUUF", "EODHD_API_KEY", () => createEodhd().eod("SRUUF.US", { from: day(-7), period: "d", order: "a" })],
+  // FRED: the copyright notes of every series the app shows (restricted ones are skipped by the sync)
+  ...["T5YIE", "T10YIE", "T5YIFR", "DCPF3M", "DTB3", "SOFR", "GACDFSA066MSFRBPHI", "GACDISA066MSFRBNY", "BACTSAMFRBDAL", "USREC"].map((id): Probe => ["fred", `notes-${id}`, "FRED_API_KEY", async () => {
+    const r = await raw(`https://api.stlouisfed.org/fred/series?series_id=${id}&file_type=json&api_key=${envKey("FRED_API_KEY")}`) as { seriess?: { title?: string; notes?: string; last_updated?: string }[] };
+    const x = r.seriess?.[0] ?? {}; return { title: x.title, last_updated: x.last_updated, notes: x.notes };
+  }]),
+  // Cboe index history files (display terms to be checked)
+  ["cboe", "VIX_History", null, async () => { const t = await (await fetch("https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv", { signal: AbortSignal.timeout(30_000) })).text(); const l = t.trim().split("\n"); return { header: l[0], last: l.slice(-2), rows: l.length }; }],
   // IMF World Economic Outlook (no key)
   ["imf", "weo-NGDP_RPCH", null, async () => {
     const r = await fetch(`https://www.imf.org/external/datamapper/api/v1/NGDP_RPCH?periods=${y0},${y0 + 1}`, { headers: { "user-agent": "Superfinancials data sync (https://github.com/jamesokpare/Superfinancials)" }, signal: AbortSignal.timeout(30_000) });

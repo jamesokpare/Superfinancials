@@ -560,6 +560,7 @@ export type FredSpec2 = { id: string; code: string; name: string; unit: string; 
 export const FRED_SERIES: FredSpec2[] = [
   { id: "T5YIE", code: "BE5Y", name: "5-year breakeven inflation (Treasury market)", unit: "%", cat: "in", freq: "D", src: "U.S. Treasury and Federal Reserve via FRED (T5YIE)", notes: "5-year Treasury yield minus 5-year TIPS yield: the inflation rate the bond market prices in. A free stand-in for a 5-year inflation swap." },
   { id: "T10YIE", code: "BE10Y", name: "10-year breakeven inflation (Treasury market)", unit: "%", cat: "in", freq: "D", src: "U.S. Treasury and Federal Reserve via FRED (T10YIE)", notes: "10-year Treasury yield minus 10-year TIPS yield. A free stand-in for a 10-year inflation swap." },
+  { id: "DCPF3M", minus: "DTB3", bp: true, code: "CPBILL", name: "Bank funding stress: 3-month AA financial commercial paper minus 3-month Treasury bill", unit: "bp", cat: "mp", freq: "D", src: "Federal Reserve Board (commercial paper rates and H.15 Treasury bills), via FRED; calculated", notes: "Unsecured short-term borrowing cost of highly rated financial firms over the 3-month bill rate, in basis points. Like the old TED spread it carries bank credit risk; both rates are on a discount basis." },
   { id: "SOFR", minus: "DTB3", bp: true, code: "FUNDSPRD", name: "Funding spread: SOFR minus 3-month Treasury bill (TED spread replacement)", unit: "bp", cat: "mp", freq: "D", src: "Federal Reserve Bank of New York (SOFR) and Federal Reserve Board H.15 (3-month bill), via FRED; calculated", notes: "Secured overnight funding rate minus the 3-month Treasury bill rate (discount basis), in basis points. Replaces the TED spread, which was discontinued with LIBOR. Widening signals funding stress." },
   // Regional Federal Reserve manufacturing surveys: free, attributable stand-ins for the (licensed) ISM PMI. Diffusion indexes: above 0 = expansion.
   { id: "GACDFSA066MSFRBPHI", code: "PHILLYMFG", name: "Philadelphia Fed manufacturing: current general activity", unit: "index (diffusion, SA)", cat: "gr", freq: "M", src: "Federal Reserve Bank of Philadelphia, Manufacturing Business Outlook Survey (via FRED)", notes: "Share of firms reporting increases minus share reporting decreases, seasonally adjusted. Above zero means expansion. Not the ISM PMI, which is licensed." },
@@ -574,9 +575,17 @@ export async function fredSeriesList(specs: FredSpec2[] = FRED_SERIES, now = new
     const r = await getJson<{ observations?: { date: string; value: string }[] }>("FRED", buildUrl("https://api.stlouisfed.org/fred", "/series/observations", { api_key: key, file_type: "json", series_id: id, observation_start: from }));
     return new Map((r.observations ?? []).flatMap((o) => { const v = Number(o.value); return o.value !== "." && Number.isFinite(v) ? [[o.date, v] as [string, number]] : []; }));
   };
+  // FRED carries some proprietary series (ICE BofA, S&P, Moody's) whose owners forbid reuse without permission.
+  // Their notes say so; such a series is skipped rather than shown.
+  const restricted = async (id: string) => {
+    const r = await getJson<{ seriess?: { notes?: string }[] }>("FRED", buildUrl("https://api.stlouisfed.org/fred", "/series", { api_key: key, file_type: "json", series_id: id }));
+    return /prior written permission|reproduction (is )?prohibited|not be reproduced|all rights reserved/i.test(r.seriess?.[0]?.notes ?? "");
+  };
   for (const s of specs) {
     const from = `${now.getUTCFullYear() - (s.from ?? (s.freq === "D" ? 5 : 20))}-01-01`;
     try {
+      const blocked = (await Promise.all([s.id, ...(s.minus ? [s.minus] : [])].map((id) => restricted(id).catch(() => false)))).some(Boolean);
+      if (blocked) { errors.push(`${s.id}: the series owner restricts reuse (FRED notes); skipped`); continue; }
       const a = await get(s.id, from); const b = s.minus ? await get(s.minus, from) : null;
       const pts = [...a].flatMap(([d, v]) => { if (b && !b.has(d)) return []; const x = b ? (v - b.get(d)!) * (s.bp ? 100 : 1) : v; const t = s.freq === "M" ? periodEnd(d.slice(0, 7)) : d; return t ? [{ t, v: Number(x.toFixed(s.bp ? 1 : 3)) }] : []; });
       if (pts.length) out.push({ cc: "US", code: s.code, name: s.name, unit: s.unit, cat: s.cat, freq: s.freq, src: s.src, url: `https://fred.stlouisfed.org/series/${s.id}`, notes: s.notes, points: sortPts(pts) });
