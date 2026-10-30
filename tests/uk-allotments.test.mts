@@ -1,7 +1,7 @@
 // Test of src/lib/ukstream: SH01 events from the Companies House filing stream,
 // timepoint resume, company names, day grouping, clean-up, dry runs.
 // Run: npm test
-import { docContentUrl, readEvent, readSh01, readStream, runUkAllotments } from "../src/lib/ukstream/sync";
+import { docContentUrl, impliedValue, readEvent, readSh01, readSh01Total, readStream, runUkAllotments } from "../src/lib/ukstream/sync";
 import { memoryStore } from "../src/lib/market/store";
 
 process.env.COMPANIES_HOUSE_STREAM_KEY = "stream-key"; process.env.COMPANIES_HOUSE_API_KEY = "rest-key";
@@ -66,5 +66,10 @@ delete process.env.COMPANIES_HOUSE_STREAM_KEY;
 let msg = ""; try { await runUkAllotments({ store: memoryStore() }); } catch (e) { msg = (e as Error).message; }
 t("needs a stream key", /COMPANIES_HOUSE_STREAM_KEY/.test(msg), msg);
 
+const SH = "Class of Shares: ORDINARY Number allotted 2,000\nCurrency: GBP Nominal value of each share 0.001\nAmount paid: 1.25\nAmount unpaid: 0\nStatement of Capital (Totals)\nCurrency: GBP Total number of shares: 1,002,000 Total aggregate nominal value: 1002";
+t("SH01: total shares in issue from the statement of capital", readSh01Total(SH) === 1002000 && readSh01Total("Class of Shares: X") === null);
+t("SH01: implied valuation = price paid × shares in issue; none for par issues or mixed currencies", impliedValue(readSh01(SH), readSh01Total(SH))?.value === 1252500
+  && impliedValue([{ cls: "O", ccy: "GBP", shares: 10, nominal: 1, paid: 1, amount: 10 }], 100) === null
+  && impliedValue([{ cls: "O", ccy: "GBP", shares: 10, nominal: 0.1, paid: 2, amount: 20 }, { cls: "P", ccy: "USD", shares: 1, nominal: 0.1, paid: 3, amount: 3 }], 100) === null, impliedValue(readSh01(SH), readSh01Total(SH)));
 console.log(fails ? `\n${fails} uk-allotments test(s) failed` : "\nAll uk-allotments tests passed");
 process.exit(fails ? 1 : 0);

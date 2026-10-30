@@ -30,7 +30,8 @@ const ukRaised = x => {
   if (!r || !r.length) return x && x.pdf === 'no-text' ? '<span class="sub" title="Paper filing: the scanned document has no text to read">scanned</span>' : '—';
   const by = {}; r.forEach(k => { by[k.ccy] = (by[k.ccy] || 0) + (+k.amount || 0); });
   const tip = r.map(k => `${k.cls}: ${nf(k.shares, 0)} shares × ${k.ccy} ${k.paid}`).join('\n');
-  return `<span title="${esc(tip)}">${Object.entries(by).map(([c, v]) => `${esc(c)} ${nf(v, v % 1 ? 2 : 0)}`).join('<br>')}</span>`;
+  const im = x.implied && x.implied.value > 0 ? `<div class="sub" title="${esc(`Implied valuation: ${x.implied.ccy} ${x.implied.price} a share × ${nf(x.implied.shares, 0)} shares in issue after the allotment (statement of capital). Treats every share class as worth this round's price; not a reported valuation.`)}">implied ${esc(x.implied.ccy)} ${x.implied.value >= 1e6 ? nf(x.implied.value / 1e6, 1) + 'm' : nf(x.implied.value, 0)}</div>` : '';
+  return `<span title="${esc(tip)}">${Object.entries(by).map(([c, v]) => `${esc(c)} ${nf(v, v % 1 ? 2 : 0)}`).join('<br>')}</span>${im}`;
 };
 const ukNum = s => { const n = String(s || '').trim().toUpperCase().replace(/\s+/g, ''); return /^\d{1,8}$/.test(n) ? n.padStart(8, '0') : /^[A-Z]{2}\d{6}$/.test(n) ? n : null; };
 

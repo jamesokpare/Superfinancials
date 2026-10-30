@@ -9,8 +9,10 @@ import { cipForward, impliedForward, parseCboeHistory, policyPath, realisedVol, 
 import { jsonStatRows, nbsPmiLinks, parseBoeSpot, parseNbsPmi, parseOecdCli } from "../src/lib/macro/surveys";
 import { FRED_SERIES } from "../src/lib/macro/sources";
 import { datesIn, noticeDates } from "../src/lib/macro/cbnotices";
+import { readCarb, readRggi } from "../src/lib/macro/carbon";
+import { countryCode } from "../src/lib/macro/countryrisk";
 import { eexReportLinks, embSpread, interpCurve, parseEmbPage } from "../src/lib/macro/spreads";
-import { boeRows, CB_PAGES, counts, EEX_PAGE, EMB_HTML, JS, LIST, nbs, newSourceFetch, REL } from "./fixtures/macro-new-sources";
+import { RGGI_HTML, boeRows, CB_PAGES, counts, EEX_PAGE, EMB_HTML, JS, LIST, nbs, newSourceFetch, REL } from "./fixtures/macro-new-sources";
 import { memoryStore } from "../src/lib/market/store";
 
 process.env.MACRO_RETRY_MS = "5"; process.env.MACRO_GAP_MS = "0";
@@ -58,6 +60,10 @@ t("EEX: this year's auction report linked, calendars and old years skipped", JSO
 t("dates in notices: ranges give the last day; English and Spanish", JSON.stringify(datesIn("Monday 23rd and Tuesday 24th November, 2026")) === '["2026-11-24"]' && JSON.stringify(datesIn("March 16 to Wednesday, March 18, 2026")) === '["2026-03-18"]' && JSON.stringify(datesIn("el 6 de noviembre de 2026")) === '["2026-11-06"]' && JSON.stringify(datesIn("23rd – 25th November 2026")) === '["2026-11-25"]', [datesIn("Monday 23rd and Tuesday 24th November, 2026"), datesIn("March 16 to Wednesday, March 18, 2026"), datesIn("23rd – 25th November 2026")]);
 t("notice dates: MPC sentences only, future only", JSON.stringify(noticeDates(CB_PAGES["www.cbe.org.eg"], NOW)) === '["2026-12-24"]' && JSON.stringify(noticeDates(CB_PAGES["www.bog.gov.gh"], NOW)) === '["2026-11-25"]', [noticeDates(CB_PAGES["www.cbe.org.eg"], NOW), noticeDates(CB_PAGES["www.bog.gov.gh"], NOW)]);
 
+t("RGGI table: date and clearing price per auction, totals row skipped", JSON.stringify(readRggi(RGGI_HTML)) === JSON.stringify([{ t: "2026-03-11", v: 24.99 }, { t: "2026-06-03", v: 23.1 }]), readRggi(RGGI_HTML));
+t("CARB summary: current-vintage settlement price per auction, reserve price ignored", JSON.stringify(readCarb("May 2026 Settlement Price $29.61 $28.80 August 2026 Settlement Price $30.05 $29.12 Auction Reserve Price 2026 $25.87")) === JSON.stringify([{ t: "2026-05-31", v: 29.61 }, { t: "2026-08-31", v: 30.05 }]));
+t("country names → ISO codes (Intl names plus Damodaran's spellings)", countryCode("Nigeria") === "NG" && countryCode("Côte d'Ivoire") === "CI" && countryCode("Korea") === "KR" && countryCode("Congo (Democratic Republic of)") === "CD" && countryCode("Atlantis") === null);
+
 // --- the sync with fake publishers -----------------------------------------------------------------------------------
 const treasCsv = `Date,"1 Mo","2 Mo","3 Mo","6 Mo","1 Yr","2 Yr","5 Yr","10 Yr","30 Yr"\n10/28/2026,4.10,4.05,4.00,3.80,3.50,3.40,3.60,4.00,4.50\n10/27/2026,4.11,4.06,4.01,3.82,3.52,3.41,3.61,4.01,4.51\n`;
 globalThis.fetch = (async (input: string | URL | Request) => {
@@ -72,7 +78,7 @@ const store = memoryStore();
 // SPX history in the market store (t0 + day gaps), for VIX minus realised volatility.
 await store.upsert("mkthist", [{ id: "IX.SPX", data: { type: "hist", id: "IX.SPX", parts: { eodhd: { t0: "2026-09-27", c: Array.from({ length: 32 }, (_, i) => 5000 * (1 + (i % 2 ? 0.01 : -0.01))), dd: Array(31).fill(1), checked: "x" } } } }]);
 await store.upsert("adm_series", [{ id: "CN.PMIMFG", data: { kind: "eco", cc: "CN", code: "PMIMFG", d: ["2026-08-31"], v: [49.4], gen: "macro-sync" } }]);
-const r = await runMacroSync({ store, now: NOW, only: ["oecd-cli", "ec-sentiment", "ecb-spf", "nbs-pmi", "boe-inflation", "treasury-curve", "nyfed", "fx-forwards", "vix-curve", "emb-spread", "eu-carbon", "cb-notices"] });
+const r = await runMacroSync({ store, now: NOW, only: ["oecd-cli", "ec-sentiment", "ecb-spf", "nbs-pmi", "boe-inflation", "treasury-curve", "nyfed", "fx-forwards", "vix-curve", "emb-spread", "eu-carbon", "cb-notices", "rggi", "carb", "country-risk"] });
 const S = new Map((await store.list("adm_series")).map((d) => [d.id, d.data as Record<string, any>])); // eslint-disable-line @typescript-eslint/no-explicit-any
 t("every new source answered", Object.values(r.sources).every((s) => !s.error && !s.skipped), r.sources);
 t("OECD CLI and consumer confidence stored with credit", S.get("US.CLI")?.v?.[0] === 100.2 && S.get("JP.CCI")?.unit === "index (LTA = 100)" && /CC BY 4.0/.test(S.get("US.CLI")?.notes));
@@ -89,6 +95,8 @@ const C = new Map((await store.list("adm_cal")).map((d) => [d.id, d.data as Reco
 t("EMB spread stored from this run's Treasury curve", S.get("US.EMSPRD")?.d?.join() === "2026-10-28" && S.get("US.EMSPRD")?.v?.[0] != null && S.get("US.EMSPRD")!.v[0] > 150, S.get("US.EMSPRD"));
 t("EU carbon: EUA auctions averaged per day, aviation and cancelled skipped", S.get("EU.EUAAUC")?.d?.join() === "2026-10-27,2026-10-28" && S.get("EU.EUAAUC")?.v?.join() === "71.4,72.05" && /EEX/.test(S.get("EU.EUAAUC")?.src), S.get("EU.EUAAUC"));
 t("central-bank notices: CBN, CBK, BoG, CBE and Banxico dates, each linked to its page", ["auto-cbn-ng-2026-11-24", "auto-cbn-ke-2026-12-08", "auto-cbn-gh-2026-11-25", "auto-cbn-eg-2026-12-24", "auto-cbn-mx-2026-11-19", "auto-cbn-mx-2026-12-17"].every((id) => C.get(id)?.cat === "cb") && /centralbank\.go\.ke/.test(C.get("auto-cbn-ke-2026-12-08")?.url) && !C.has("auto-cbn-ng-2027-01-12"), [...C.keys()]);
+t("RGGI and California–Québec carbon auctions stored", S.get("US.RGGIAUC")?.v?.join() === "24.99,23.1" && S.get("US.CCAAUC")?.v?.join() === "29.61,30.05" && /Air Resources Board/.test(S.get("US.CCAAUC")?.src), [S.get("US.RGGIAUC")?.v, S.get("US.CCAAUC")?.v]);
+t("Damodaran country risk: per country, dated by the update, GB → UK, credited", S.get("NG.CRP")?.v?.[0] === 9.87 && S.get("NG.DEFSPRD")?.v?.[0] === 7.85 && S.get("UK.ERP")?.v?.[0] === 5.17 && S.get("CI.CRP")?.d?.[0] === "2026-01-05" && /Damodaran/.test(S.get("NG.CRP")?.notes) && /Caa1/.test(S.get("NG.CRP")?.notes), [S.get("NG.CRP")?.v, S.get("UK.ERP")?.v]);
 t("derived counts credited to their input sources", (r.sources["vix-curve"]?.series ?? 0) >= 3 && (r.sources["treasury-curve"]?.series ?? 0) >= 6, r.sources);
 
 // second run: the BoE archive is not read again; NBS keeps history; a changed release replaces its month

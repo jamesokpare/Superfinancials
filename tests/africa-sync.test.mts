@@ -9,17 +9,8 @@ import { africanCode, isoDate, num, readMover } from "../src/lib/africa/read";
 import { facts, rankedLists } from "../src/lib/africa/country";
 import { memoryStore } from "../src/lib/market/store";
 import { cbnColumn, ngDate, readDmoAuction } from "../src/lib/africa/ngdebt";
+import { makePdf } from "./fixtures/pdf";
 
-/** A one-page PDF with a text layer (Helvetica), one line per string. */
-function makePdf(lines: string[]): Buffer {
-  const esc = (x: string) => x.replace(/[\\()]/g, (c) => "\\" + c);
-  const content = "BT /F1 9 Tf 30 810 Td 11 TL " + lines.map((l) => `(${esc(l)}) Tj T*`).join(" ") + " ET";
-  const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>", `<< /Length ${content.length} >>\nstream\n${content}\nendstream`, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
-  let out = "%PDF-1.4\n"; const offs: number[] = [];
-  objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
-  const x = out.length; out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => String(o).padStart(10, "0") + " 00000 n \n").join("") + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF`;
-  return Buffer.from(out, "latin1");
-}
 const CBN_HTML = `<html><body><table><tr><th>Date</th><th>Interbank Call Rate (%)</th><th>Open Buy Back (OBB)</th><th colspan="3">NIBOR</th><th>MPR</th></tr>
 <tr><th></th><th></th><th></th><th>7 Days</th><th>30 Days</th><th>90 Days</th><th></th></tr>
 <tr><td>28/10/2026</td><td>26.50</td><td>26.10</td><td>27.20</td><td>28.00</td><td>29.10</td><td>27.50</td></tr>

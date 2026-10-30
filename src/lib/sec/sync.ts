@@ -22,7 +22,7 @@ import { ProviderError } from "@/lib/providers/http";
 import { scrub } from "@/lib/providers";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
 import { contactUA } from "@/lib/macro/sources";
-import { applyFrame, fetchFrame, framePlan, trimCo, type FrameCo } from "./frames";
+import { applyFrame, fetchFrame, framePlan, trimCo, fillQ4, type FrameCo } from "./frames";
 import { fetchDataset, pastQuarters, readDataset, type Offering } from "./datasets";
 
 export const GEN = "sec-datasets";
@@ -86,7 +86,7 @@ export async function runSecSync(opts: { store?: DocStore; dryRun?: boolean; now
         const keepQ = new Set(plan.filter((f) => f.kind === "q").map((f) => f.period)), keepY = new Set(plan.filter((f) => f.kind === "fy").map((f) => f.period));
         const out = new Map<string, Record<string, FrameCo>>();
         for (const [cik, co] of by) {
-          const tk = tkOf.get(cik); if (!tk) continue; const t = trimCo(co, keepQ, keepY); if (!t.q.length && !t.fy.length) continue;
+          const tk = tkOf.get(cik); if (!tk) continue; const t = trimCo(fillQ4(co, keepQ), keepQ, keepY); if (!t.q.length && !t.fy.length) continue;
           (out.get(shardOf(tk)) ?? out.set(shardOf(tk), {}).get(shardOf(tk))!)[tk] = t;
         }
         const old = new Map(shards.map((s) => [s.id, s.data]));

@@ -65,7 +65,7 @@ export async function fetchFrame(f: { tax: string; concept: string; unit: string
 }
 
 /** One company's stored figures. Rows: period label, start, end, EPS (+ rank), revenue (+ rank). */
-export type FrameRow = { p: string; s?: string; e: string; eps?: number | null; er?: number; rev?: number | null; rr?: number; acc?: string };
+export type FrameRow = { p: string; s?: string; e: string; eps?: number | null; er?: number; rev?: number | null; rr?: number; acc?: string; /** Derived: fiscal year minus the three reported quarters. */ dq?: 1 };
 export type FrameCo = { cik: number; name: string; q: FrameRow[]; fy: FrameRow[]; sh?: [string, number] | null };
 
 /** Merges one frame into the per-CIK map: a concept only replaces a value from a lower-preference concept (or its own). */
@@ -89,4 +89,26 @@ export function applyFrame(by: Map<number, FrameCo>, f: FrameSpec & { period: st
 export function trimCo(co: FrameCo, keepQ: Set<string>, keepY: Set<string>): FrameCo {
   const sort = (a: FrameRow, b: FrameRow) => (a.e < b.e ? 1 : a.e > b.e ? -1 : 0);
   return { ...co, q: co.q.filter((r) => keepQ.has(r.p)).sort(sort), fy: co.fy.filter((r) => keepY.has(r.p)).sort(sort) };
+}
+
+/**
+ * Fourth quarters: companies report Q4 only inside the annual 10-K figure, so frames (and companyfacts) have no
+ * standalone Q4. Where a fiscal year and its first three quarters are all on file and line up (the year ends
+ * about a quarter after Q3), Q4 = year − Q1 − Q2 − Q3, marked `dq`. Exact for revenue; for EPS it is an
+ * approximation when the share count changed during the year.
+ */
+export function fillQ4(co: FrameCo, keepQ?: Set<string>): FrameCo {
+  const q = [...co.q]; const day = 864e5;
+  for (const fy of co.fy) {
+    const y = /^CY(\d{4})$/.exec(fy.p)?.[1]; if (!y) continue; const p4 = `CY${y}Q4`;
+    if ((keepQ && !keepQ.has(p4)) || q.some((r) => r.p === p4 && !r.dq)) continue;
+    const qs = [1, 2, 3].map((k) => q.find((r) => r.p === `CY${y}Q${k}`)); if (qs.some((r) => !r)) continue;
+    const q3 = qs[2]!; const gap = (Date.parse(fy.e) - Date.parse(q3.e)) / day; if (!(gap >= 80 && gap <= 100)) continue;
+    const sub = (k: "rev" | "eps") => fy[k] != null && qs.every((r) => r![k] != null) ? Number((fy[k]! - qs.reduce((a, r) => a + r![k]!, 0)).toFixed(k === "eps" ? 2 : 0)) : null;
+    const rev = sub("rev"), eps = sub("eps"); if (rev == null && eps == null) continue;
+    const row: FrameRow = { p: p4, s: new Date(Date.parse(q3.e) + day).toISOString().slice(0, 10), e: fy.e, rev, eps, dq: 1 };
+    if (fy.er != null) row.er = fy.er; if (fy.rr != null) row.rr = fy.rr;
+    const i = q.findIndex((r) => r.p === p4); if (i >= 0) q[i] = row; else q.push(row);
+  }
+  return { ...co, q };
 }
