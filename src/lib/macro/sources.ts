@@ -460,3 +460,68 @@ export async function icsCalendars(now: Date): Promise<CalEvent[]> {
   if (!out.length && errs.length) throw new ProviderError("calendars", errs.join(" | "));
   return out;
 }
+
+// --- IMF World Economic Outlook (DataMapper API, no key) -----------------------------------------
+/** App country code → ISO 3166 alpha-3, for the countries the macro sync covers. */
+export const ISO3: Record<string, string> = {
+  AF: "AFG", AO: "AGO", AR: "ARG", AT: "AUT", AU: "AUS", BD: "BGD", BE: "BEL", BF: "BFA", BJ: "BEN", BR: "BRA", BW: "BWA", CA: "CAN", CD: "COD", CG: "COG", CH: "CHE",
+  CI: "CIV", CL: "CHL", CM: "CMR", CN: "CHN", CO: "COL", CV: "CPV", CZ: "CZE", DE: "DEU", DK: "DNK", DZ: "DZA", EG: "EGY", ES: "ESP", ET: "ETH", FI: "FIN", FR: "FRA",
+  GA: "GAB", GH: "GHA", GM: "GMB", GN: "GIN", GR: "GRC", HK: "HKG", HU: "HUN", ID: "IDN", IE: "IRL", IL: "ISR", IN: "IND", IQ: "IRQ", IR: "IRN", IT: "ITA", JM: "JAM",
+  JO: "JOR", JP: "JPN", KE: "KEN", KR: "KOR", KW: "KWT", KZ: "KAZ", LB: "LBN", LK: "LKA", LR: "LBR", LY: "LBY", MA: "MAR", MG: "MDG", ML: "MLI", MU: "MUS", MW: "MWI",
+  MX: "MEX", MY: "MYS", MZ: "MOZ", NA: "NAM", NE: "NER", NG: "NGA", NL: "NLD", NO: "NOR", NZ: "NZL", OM: "OMN", PE: "PER", PH: "PHL", PK: "PAK", PL: "POL", PT: "PRT",
+  QA: "QAT", RO: "ROU", RU: "RUS", RW: "RWA", SA: "SAU", SD: "SDN", SE: "SWE", SG: "SGP", SL: "SLE", SN: "SEN", SS: "SSD", TG: "TGO", TH: "THA", TN: "TUN", TR: "TUR",
+  TW: "TWN", TZ: "TZA", UA: "UKR", AE: "ARE", UG: "UGA", UK: "GBR", US: "USA", UY: "URY", VE: "VEN", VN: "VNM", ZA: "ZAF", ZM: "ZMB", ZW: "ZWE",
+};
+/** WEO indicators read for their projections (this year and the next five), plus the fiscal balance history the World Bank set lacks. */
+export const IMF_INDICATORS: { id: string; code: string; name: string; unit: string; cat: MacroSeries["cat"]; history?: { code: string; name: string } }[] = [
+  { id: "NGDP_RPCH", code: "GDPF", name: "Real GDP growth, IMF projection", unit: "% y/y", cat: "gr" },
+  { id: "PCPIPCH", code: "CPIF", name: "Consumer price inflation (average), IMF projection", unit: "% y/y", cat: "in" },
+  { id: "LUR", code: "URF", name: "Unemployment rate, IMF projection", unit: "%", cat: "lb" },
+  { id: "GGXWDG_NGDP", code: "DEBTF", name: "General government gross debt, IMF projection", unit: "% of GDP", cat: "fs" },
+  { id: "BCA_NGDPD", code: "CAF", name: "Current account balance, IMF projection", unit: "% of GDP", cat: "ex" },
+  { id: "GGXCNL_NGDP", code: "BALF", name: "Fiscal balance (government net lending/borrowing), IMF projection", unit: "% of GDP", cat: "fs", history: { code: "GGBAL", name: "Fiscal balance (government net lending/borrowing)" } },
+];
+type ImfValues = { values?: Record<string, Record<string, Record<string, number | string | null>>> };
+/** One request per indicator (all countries). Projections: this year to five years ahead; fiscal balance history: 15 years. */
+export async function imfWeo(countries: string[], now: Date): Promise<MacroSeries[]> {
+  const y0 = now.getUTCFullYear(); const years = Array.from({ length: 21 }, (_, i) => y0 - 15 + i);
+  const by3 = new Map(countries.filter((c) => ISO3[c]).map((c) => [ISO3[c], c]));
+  const out: MacroSeries[] = []; const errors: string[] = [];
+  for (const ind of IMF_INDICATORS) {
+    let r: ImfValues;
+    try { r = await getJson<ImfValues>("IMF", buildUrl("https://www.imf.org/external/datamapper/api/v1", `/${ind.id}`, { periods: years.join(",") }), { init: { headers: UA } }); }
+    catch (e) { errors.push(`${ind.id}: ${(e as Error).message}`); continue; }
+    for (const [iso3, vals] of Object.entries(r.values?.[ind.id] ?? {})) {
+      const cc = by3.get(iso3); if (!cc) continue;
+      const pts = Object.entries(vals).flatMap(([y, v]) => { const n = typeof v === "number" ? v : Number(v); return /^\d{4}$/.test(y) && v !== null && v !== "" && Number.isFinite(n) ? [{ y: +y, v: Number(n.toFixed(2)) }] : []; });
+      const url = `https://www.imf.org/external/datamapper/${ind.id}@WEO/${iso3}`;
+      const fc = pts.filter((p) => p.y >= y0 && p.y <= y0 + 5).map((p) => ({ t: `${p.y}-12-31`, v: p.v }));
+      if (fc.length) out.push({ cc, code: ind.code, name: ind.name, unit: ind.unit, cat: ind.cat, freq: "A", src: "IMF World Economic Outlook", url,
+        notes: `IMF projections for ${y0}–${y0 + 5} from the latest World Economic Outlook (published each April and October); this year's value is an estimate. Replaced with each new edition.`, points: sortPts(fc) });
+      const hist = ind.history && pts.filter((p) => p.y < y0).map((p) => ({ t: `${p.y}-12-31`, v: p.v }));
+      if (ind.history && hist?.length) out.push({ cc, code: ind.history.code, name: ind.history.name, unit: ind.unit, cat: ind.cat, freq: "A", src: "IMF World Economic Outlook", url,
+        notes: "General government net lending (+) or borrowing (−) as a share of GDP, IMF World Economic Outlook.", points: sortPts(hist) });
+    }
+  }
+  if (errors.length === IMF_INDICATORS.length) throw new ProviderError("IMF", errors[0]);
+  return out;
+}
+
+// --- NBER U.S. recession dates (FRED series USREC) ------------------------------------------------
+/** Monthly NBER recession indicator (1 = recession month) since 1948, as series US.USREC. Needs FRED_API_KEY. */
+export async function nberRecessions(): Promise<MacroSeries[]> {
+  const key = requireKey("FRED", "FRED_API_KEY");
+  const r = await getJson<{ observations?: { date: string; value: string }[] }>("FRED", buildUrl("https://api.stlouisfed.org/fred", "/series/observations", { api_key: key, file_type: "json", series_id: "USREC", observation_start: "1948-01-01" }));
+  const points = (r.observations ?? []).flatMap((o) => { const v = Number(o.value); const t = periodEnd(o.date.slice(0, 7)); return (v === 0 || v === 1) && t ? [{ t, v }] : []; });
+  if (!points.length) throw new ProviderError("FRED", "USREC returned no observations");
+  return [{ cc: "US", code: "USREC", name: "NBER recession indicator (1 = recession)", unit: "0/1", cat: "gr", freq: "M", src: "NBER business-cycle dates via FRED (USREC)", url: "https://fred.stlouisfed.org/series/USREC",
+    notes: "Months between an NBER business-cycle peak and the following trough are 1. The NBER dates turning points months after the fact, so the latest months stay 0 until it announces one.", points }];
+}
+
+/** Recession periods [{ from, to }] (month-end dates) from a 0/1 monthly series. */
+export function recessionSpans(points: Point[]): { from: string; to: string }[] {
+  const out: { from: string; to: string }[] = []; let s: string | null = null; let last = "";
+  for (const p of points) { if (p.v === 1 && !s) s = p.t; if (p.v !== 1 && s) { out.push({ from: s, to: last }); s = null; } last = p.t; }
+  if (s) out.push({ from: s, to: last });
+  return out;
+}

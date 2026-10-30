@@ -4,7 +4,7 @@
 // re-runs and dry runs.
 // Run: npm test
 import { runMacroSync, GEN } from "../src/lib/macro/sync";
-import { parseCsv, parsePinkSheet, periodEnd, parseIcs } from "../src/lib/macro/sources";
+import { parseCsv, parsePinkSheet, periodEnd, parseIcs, recessionSpans } from "../src/lib/macro/sources";
 import { readXlsx, writeXlsx } from "../src/lib/macro/xlsx";
 import { memoryStore } from "../src/lib/market/store";
 
@@ -68,6 +68,15 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     // COICOP-1999 EU series stop at 2025-12; the COICOP-2018 flow carries them on (and revises the overlap).
     const rows = c2018 ? [["DEU", "2025-12", "2.0"], ["DEU", "2026-09", "2.3"]] : [["USA", "2026-08", "2.9"], ["USA", "2026-09", "3.0"], ["GBR", "2026-09", "3.6"], ["DEU", "2025-12", "1.9"], ["XXX", "2026-09", "9"]];
     return csv("STRUCTURE,STRUCTURE_ID,ACTION,REF_AREA,FREQ,MEASURE,TIME_PERIOD,OBS_VALUE\n" + rows.filter(([a]) => areas.includes(a) || a === "XXX").map(([a, t, v]) => `dataflow,X,I,${a},M,CPI,${t},${v}`).join("\n") + "\n");
+  }
+  if (url.hostname === "api.stlouisfed.org" && url.pathname.endsWith("/series/observations")) return json({ observations: [
+    { date: "2007-11-01", value: "0" }, { date: "2007-12-01", value: "1" }, { date: "2008-01-01", value: "1" }, { date: "2009-06-01", value: "1" }, { date: "2009-07-01", value: "0" },
+    { date: "2020-02-01", value: "0" }, { date: "2020-03-01", value: "1" }, { date: "2020-04-01", value: "1" }, { date: "2020-05-01", value: "0" }, { date: "2026-09-01", value: "." },
+  ] });
+  if (url.hostname === "www.imf.org" && url.pathname.startsWith("/external/datamapper/api/v1/")) {
+    const id = url.pathname.split("/").pop()!;
+    if (id === "LUR") return json({ error: "boom" }, 500);
+    return json({ values: { [id]: { USA: { "2024": 2.8, "2025": 1.9, "2026": 2.0, "2027": "2.1", "2031": 2.0, "2032": 9 }, NGA: { "2026": 3.4, "2027": null }, XYZ: { "2026": 1 } } }, api: { version: "1" } });
   }
   if (url.hostname === "api.stlouisfed.org") return json({ release_dates: [
     { release_id: 10, release_name: "Consumer Price Index", date: "2026-11-12" }, { release_id: 50, release_name: "Employment Situation", date: "2026-11-06" },
@@ -160,7 +169,7 @@ const ten = C.get("auto-ust-2026-11-10-91282CNX5");
 t("Treasury auctions: title, amount, category", ten?.title === "U.S. Treasury 10-Year Note auction (reopening)" && /US\$42\.0 bn/.test(String(ten?.notes)) && ten?.cat === "auc" && ten?.imp === 2, ten);
 t("calendar: owner events kept; stale and rescheduled auto events removed", C.has("desk-1") && !C.has("auto-ust-2026-11-03-OLD") && !C.has("auto-fred-10-2026-01-01") && r.events.removed === 2, [...C.keys()]);
 const meta = (await store.list("macrosync"))[0]?.data;
-t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total + r.funds.total && /22 of 22 sources/.test(String(meta?.note)), meta);
+t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total + r.funds.total && /24 of 24 sources/.test(String(meta?.note)), meta);
 
 const cpi = C.get("auto-eco-2026-11-12-us-cpi-yoy-oct");
 t("economic calendar: consensus, prior, time; low-importance and unknown countries dropped", cpi?.cons === "3.1" && cpi?.prior === "3" && cpi?.actual === "" && cpi?.time === "13:30" && cpi?.imp === 3 && ![...C.keys()].some((k) => /minor-survey|unknown-place/.test(k)), cpi);
@@ -222,6 +231,15 @@ fmpPremium = true;
 const fb = await runMacroSync({ store: memoryStore(), now: NOW, only: ["econ-calendar", "ipos", "dividends"] });
 t("FMP plan error → EODHD answers the economic and IPO calendars", fb.sources["econ-calendar"].events === 1 && fb.sources.ipos.events === 1 && fb.sources.dividends.events === 2, fb.sources);
 fmpPremium = false;
+// IMF projections and NBER recession dates
+const im = memoryStore(); const ir = await runMacroSync({ store: im, now: NOW, only: ["imf", "nber"] }); const IS = new Map((await im.list("adm_series")).map((d) => [d.id, d.data]));
+const usg = IS.get("US.GDPF") as { d?: string[]; v?: number[]; src?: string; notes?: string } | undefined;
+t("IMF: projections this year to five years ahead only, string values read, unknown areas skipped", JSON.stringify(usg?.d) === '["2026-12-31","2027-12-31","2031-12-31"]' && JSON.stringify(usg?.v) === "[2,2.1,2]" && /2026–2031/.test(String(usg?.notes)) && IS.has("NG.GDPF") && ![...IS.keys()].some((k) => k.startsWith("XYZ")), { usg, keys: [...IS.keys()] });
+const bal = IS.get("US.GGBAL") as { d?: string[] } | undefined;
+t("IMF: fiscal balance history kept as its own series; one failing indicator loses only that one", JSON.stringify(bal?.d) === '["2024-12-31","2025-12-31"]' && !IS.has("US.URF") && ir.sources.imf.series > 0 && !ir.sources.imf.error, { bal, src: ir.sources.imf });
+const rec = IS.get("US.USREC") as { d?: string[]; v?: number[]; freq?: string } | undefined;
+t("NBER: monthly 0/1 at month end, missing values skipped", rec?.freq === "M" && rec.d?.[1] === "2007-12-31" && rec.v?.[1] === 1 && rec.d?.length === 9, rec);
+t("recession spans", JSON.stringify(recessionSpans([{ t: "a", v: 0 }, { t: "b", v: 1 }, { t: "c", v: 1 }, { t: "d", v: 0 }, { t: "e", v: 1 }])) === '[{"from":"b","to":"c"},{"from":"e","to":"e"}]');
 fmpDivDown = true;
 const dv = await runMacroSync({ store: memoryStore(), now: NOW, only: ["dividends", "splits"] });
 const dvs = memoryStore(); await runMacroSync({ store: dvs, now: NOW, only: ["dividends", "splits"] }); const DV = new Map((await dvs.list("adm_cal")).map((d) => [d.id, d.data]));

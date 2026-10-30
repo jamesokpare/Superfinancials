@@ -99,8 +99,8 @@ mocked responses.
   monthly). Still missing: PMIs (proprietary), central-bank meeting dates (no API; a
   yearly hand-entered list in the Data studio is the practical route), AGMs, and
   consensus figures where the FMP/EODHD plan doesn't include the economic calendar.
-- **Earnings beyond U.S. large caps.** The earnings calendar covers the 64 U.S. names;
-  guidance, filings (SEC EDGAR) and earnings-release links are not connected.
+- **Earnings beyond U.S. large caps.** The earnings calendar covers the 64 U.S. names; their SEC filings and
+  earnings press releases are now on each equity page. Company guidance is not connected.
 - **Market intelligence.** Briefs, insights and the regime model run on prices;
   headlines are attached as possible catalysts, but causes stay unconfirmed.
 - **Private markets.** Data-desk entries and U.S. Form D private placements (amount raised,
@@ -108,8 +108,8 @@ mocked responses.
   rounds (UK Companies House SH01 share-allotment filings are a candidate), operating KPIs.
 - **Not connected anywhere** (labelled in the app): options and implied volatility, OIS and
   policy pricing, credit ratings and CDS, FX forwards/NDFs and cross-currency basis,
-  inflation swaps, IMF/BIS data, recession dating, positioning, shipping and energy
-  fundamentals.
+  inflation swaps, shipping and energy fundamentals. (IMF projections, NBER recession dates, BIS data and
+  CFTC positioning are now connected.)
 
 ## Remaining: connected but unused
 
