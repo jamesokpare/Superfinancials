@@ -987,6 +987,8 @@ const LIVE_SRC = {
 };
 const LIVE = { n: 0, real: {}, prov: {}, meta: null, days: 0, st: 'idle', sig: '', last: null };
 const liveIso = t => new Date(t).toISOString().slice(0, 10);
+/* Next.js port: [open, high, low, volume] from a day-doc row or history doc, or null when none is a number */
+const liveBar = a => { if (!Array.isArray(a)) return null; const v = [0, 1, 2, 3].map(i => a[i] == null || !isFinite(+a[i]) ? null : +a[i]); return v.some(x => x != null) ? v : null; };
 let liveBuild = function (docs) {
   LIVE.docs = docs; const P = {}; let meta = null, days = 0, last = null;
   for (const { id, x } of docs) {
@@ -994,18 +996,20 @@ let liveBuild = function (docs) {
     if (x.type === 'meta') { meta = { checked: String(x.checked || ''), note: String(x.note || ''), n: +x.n || 0 }; continue; }
     if (x.type === 'day' && x.q && typeof x.q === 'object') {
       days++; const at = Date.parse(x.checked || x.date) || 0;
-      for (const k in x.q) { if (!BY[k]) continue; const r = x.q[k]; if (!Array.isArray(r)) continue; const c = +r[0], ch = r[1] == null ? null : +r[1], t = Date.parse(r[2] || x.date), s = String(r[3] || 'web'); if (!isFinite(c) || c <= 0 && BY[k].type !== 'yield' && BY[k].type !== 'econ' || !isFinite(t)) continue; /* Next.js port: econ may be <= 0 */ const m = (P[k] = P[k] || new Map()); const e = m.get(t); if (!e || e.at <= at) m.set(t, { c, ch: isFinite(ch) ? ch : null, at, s, note: r[4] ? String(r[4]) : '' }); if (!last || t > last) last = t; }
+      for (const k in x.q) { if (!BY[k]) continue; const r = x.q[k]; if (!Array.isArray(r)) continue; const c = +r[0], ch = r[1] == null ? null : +r[1], t = Date.parse(r[2] || x.date), s = String(r[3] || 'web'); if (!isFinite(c) || c <= 0 && BY[k].type !== 'yield' && BY[k].type !== 'econ' || !isFinite(t)) continue; /* Next.js port: econ may be <= 0 */ const m = (P[k] = P[k] || new Map()); const e = m.get(t); if (!e || e.at <= at) m.set(t, { c, ch: isFinite(ch) ? ch : null, at, s, note: r[4] ? String(r[4]) : '', x: liveBar(r[5]) /* Next.js port: [open, high, low, volume] */ }); if (!last || t > last) last = t; }
     }
-    if (x.type === 'hist' && BY[x.id] && Array.isArray(x.c) && Array.isArray(x.dd) && isFinite(Date.parse(x.t0))) { const m = (P[x.id] = P[x.id] || new Map()); let t = Date.parse(x.t0); x.c.forEach((c, i) => { if (i) t += (+x.dd[i - 1] || 1) * DAY; if (isFinite(+c) && !m.has(t)) m.set(t, { c: +c, ch: null, at: 0, s: x.src || 'web', hist: 1 }); }); }
+    if (x.type === 'hist' && BY[x.id] && Array.isArray(x.c) && Array.isArray(x.dd) && isFinite(Date.parse(x.t0))) { const m = (P[x.id] = P[x.id] || new Map()); let t = Date.parse(x.t0); x.c.forEach((c, i) => { if (i) t += (+x.dd[i - 1] || 1) * DAY; if (isFinite(+c) && !m.has(t)) m.set(t, { c: +c, ch: null, at: 0, s: x.src || 'web', hist: 1, x: liveBar(['o', 'h', 'l', 'v'].map(f => Array.isArray(x[f]) ? x[f][i] : null)) }); }); }
   }
   try { admLivePoints(P); } catch (e) { /* data desk not loaded yet */ }
   const real = {}, prov = {};
   for (const k in P) {
     const ts = [...P[k].keys()].sort((a, b) => a - b); if (!ts.length) continue; const first = P[k].get(ts[0]);
-    const d = [], c = []; const srcs = new Set(); let implied = false;
-    if (first.ch != null && !first.hist) { let t = ts[0] - DAY; while ([0, 6].includes(new Date(t).getUTCDay())) t -= DAY; d.push(t); c.push(first.c - first.ch); implied = true; }
-    for (const t of ts) { const e = P[k].get(t); d.push(t); c.push(e.c); srcs.add(e.s); }
-    real[k] = { d, c }; const le = P[k].get(ts[ts.length - 1]);
+    const d = [], c = [], b = [[], [], [], []]; const srcs = new Set(); let implied = false;
+    if (first.ch != null && !first.hist) { let t = ts[0] - DAY; while ([0, 6].includes(new Date(t).getUTCDay())) t -= DAY; d.push(t); c.push(first.c - first.ch); b.forEach(a => a.push(null)); implied = true; }
+    for (const t of ts) { const e = P[k].get(t); d.push(t); c.push(e.c); srcs.add(e.s); b.forEach((a, j) => a.push(e.x ? e.x[j] : null)); }
+    /* Next.js port: real open, high, low and volume where a provider gave them (null elsewhere) */
+    const hasB = j => b[j].some(v => v != null);
+    real[k] = { d, c, o: hasB(0) ? b[0] : null, h: hasB(1) ? b[1] : null, l: hasB(2) ? b[2] : null, v: hasB(3) ? b[3] : null }; const le = P[k].get(ts[ts.length - 1]);
     prov[k] = { kind: 'real', from: ts[0], last: ts[ts.length - 1], n: ts.length, implied, src: [...srcs], note: le.note, hist: [...P[k].values()].some(e => e.hist) };
   }
   Object.assign(LIVE, { real, prov, meta, days, n: Object.keys(real).length, last });
@@ -1015,7 +1019,8 @@ function liveSplice(o, s, R) {
   const add = o.type === 'yield' || o.type === 'econ'; /* Next.js port: econ joins additively */ const t0 = R.d[0]; const j = bsLE(s.d, t0); const k = j < 0 ? (add ? 0 : 1) : add ? R.c[0] - s.c[j] : R.c[0] / s.c[j]; const m = REAL.on ? 0 : bsGE(s.d, t0); /* Next.js port: real-data mode has no modelled history before the first real price */
   const f = a => a ? a.slice(0, m).map(x => x == null ? x : add ? x + k : x * k) : null;
   const out = { d: s.d.slice(0, m), c: f(s.c), o: f(s.o), h: f(s.h), l: f(s.l), v: s.v && !REAL.on ? s.v.slice(0, m) : null, live: { from: t0, k, add } }; /* simulated volumes dropped in real-data mode */
-  R.d.forEach((t, i) => { if (t < CAL[0]) return; const c = R.c[i]; out.d.push(t); out.c.push(c); if (out.o) { const p = out.c.length > 1 ? out.c[out.c.length - 2] : c; out.o.push(p); out.h.push(Math.max(p, c)); out.l.push(Math.min(p, c)); } if (out.v) { const vi = bsLE(s.d, t); out.v.push(s.v[Math.max(0, vi)]); } });
+  /* Next.js port: real volumes replace simulated ones once a provider gives any */ if (R.v) out.v = out.v || out.d.map(() => null);
+  R.d.forEach((t, i) => { if (t < CAL[0]) return; const c = R.c[i]; out.d.push(t); out.c.push(c); if (out.o) { const p = out.c.length > 1 ? out.c[out.c.length - 2] : c; const o = R.o && R.o[i] != null ? R.o[i] : p; out.o.push(o); out.h.push(Math.max(o, c, R.h && R.h[i] != null ? R.h[i] : -Infinity)); out.l.push(Math.min(o, c, R.l && R.l[i] != null ? R.l[i] : Infinity)); } if (out.v) { if (R.v) out.v.push(R.v[i] ?? null); else { const vi = bsLE(s.d, t); out.v.push(s.v[Math.max(0, vi)]); } } });
   return out;
 }
 { const _ph = Provider.history.bind(Provider); Provider._sim = _ph;

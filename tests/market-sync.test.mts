@@ -18,9 +18,9 @@ globalThis.fetch = (async (input: string | URL | Request) => {
     if (url.pathname.startsWith("/api/real-time/")) {
       const syms = [url.pathname.split("/").pop()!, ...(url.searchParams.get("s")?.split(",") ?? [])];
       // EODHD knows AAPL and the S&P 500 but not MSFT (so MSFT must fall back to FMP).
-      return json(syms.map((code) => code === "AAPL.US" ? { code, timestamp: 1793304000, close: 262.5, change: 1.5 } : code === "GSPC.INDX" ? { code, timestamp: 1793304000, close: 6890.1, change: -10 } : { code, timestamp: "NA", close: "NA" }));
+      return json(syms.map((code) => code === "AAPL.US" ? { code, timestamp: 1793304000, close: 262.5, change: 1.5 } : code === "GSPC.INDX" ? { code, timestamp: 1793304000, close: 6890.1, change: -10, open: 6880, high: 6900.5, low: 6870, volume: 0 } : { code, timestamp: "NA", close: "NA" }));
     }
-    if (url.pathname === "/api/eod/AAPL.US") return json([{ date: "2026-10-27", close: 259, adjusted_close: 259 }, { date: "2026-10-28", close: 261, adjusted_close: 261 }]);
+    if (url.pathname === "/api/eod/AAPL.US") return json([{ date: "2026-10-27", open: 512, high: 520, low: 510, close: 518, adjusted_close: 259, volume: 1000000 }, { date: "2026-10-28", open: 259.5, high: 262, low: 258, close: 261, adjusted_close: 261, volume: 3000000 }]);
     return json([]);
   }
   if (url.hostname === "financialmodelingprep.com") {
@@ -36,7 +36,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
     return json({ observations: [] });
   }
   if (url.hostname === "ngxpulse.ng") {
-    if (url.pathname === "/api/ngxdata/stocks") return json({ data: [{ symbol: "MTNN", current_price: 455.5, change_percent: 1.2 }, { symbol: "DANGCEM", current_price: 610 }, { symbol: "GTCO", current_price: 98 }, { symbol: "ZENITHBANK", current_price: 70 }, { symbol: "UBA", current_price: 45 }] });
+    if (url.pathname === "/api/ngxdata/stocks") return json({ data: [{ symbol: "MTNN", current_price: 455.5, change_percent: 1.2, volume: "1,250,000" }, { symbol: "DANGCEM", current_price: 610 }, { symbol: "GTCO", current_price: 98 }, { symbol: "ZENITHBANK", current_price: 70 }, { symbol: "UBA", current_price: 45 }] });
     if (url.pathname === "/api/ngxdata/market") return json({ data: { asi: 151234.56, market_cap: 95e12 } });
   }
   return json({ error: "not mocked" }, 404);
@@ -47,7 +47,7 @@ const t = (label: string, ok: boolean, info?: unknown) => { if (!ok) fails++; co
 
 const seed = {
   mkt: [
-    { id: "d-2026-09-01", data: { type: "day", date: "2026-09-01", checked: "2026-09-01T22:00:00Z", q: { "CM.CL1": [70.5, null, "2026-09-01", "te"] } } },
+    { id: "d-2026-09-01", data: { type: "day", date: "2026-09-01", checked: "2026-09-01T22:00:00Z", q: { "CM.CL1": [70.5, null, "2026-09-01", "te", null, [70, 71, 69.5, 1000]] } } },
     { id: "d-2026-10-28", data: { type: "day", date: "2026-10-28", checked: "2026-10-28T22:00:00Z", q: { "IX.NGSEINDX": [150000, null, "2026-10-28", "nm"] } } },
   ],
   adm_inst: [
@@ -85,11 +85,14 @@ t("unknown instrument stays simulated", r.unresolved.includes("IX.MOVE"), r.unre
 
 const hFred = part("EC.USNFP", "fred"); const hAapl = part("EQ.AAPL", "eodhd");
 t("FRED history doc written", !!hFred && decodeHist(hFred).length === 2, hFred);
-t("EODHD history backfilled within budget", !!hAapl && JSON.stringify(decodeHist(hAapl)) === JSON.stringify([{ t: "2026-10-27", c: 259 }, { t: "2026-10-28", c: 261 }]), hAapl);
+t("EODHD history backfilled within budget, OHLCV on the adjusted basis (split: prices halved, volume doubled)", !!hAapl && JSON.stringify(decodeHist(hAapl)) === JSON.stringify([{ t: "2026-10-27", c: 259, o: 256, h: 260, l: 255, v: 2000000 }, { t: "2026-10-28", c: 261, o: 259.5, h: 262, l: 258, v: 3000000 }]), decodeHist(hAapl ?? {}));
+t("day row carries open, high, low; zero index volume dropped", JSON.stringify(q["IX.SPX"]) === JSON.stringify([6890.1, -10, "2026-10-29", "eodhd", null, [6880, 6900.5, 6870, null]]), q["IX.SPX"]);
+t("close-only history stays close-only", !("o" in (hFred ?? {})) && !("v" in (hFred ?? {})), hFred);
 t("history not fetched for computed DXY", !mh["FX.DXY"] && !Object.keys(mkt).some((k) => k.startsWith("h-")));
 t("history kept out of mkt; index lists instruments and last dates", (mkt._hist as { ids?: Record<string, string> })?.ids?.["EQ.AAPL"] === "2026-10-28" && (mkt._hist as { ids?: Record<string, string> }).ids?.["EC.USNFP"] === "2026-09-30", mkt._hist);
 
 t("old day doc folded into history and removed", !mkt["d-2026-09-01"] && decodeHist(part("CM.CL1", "te") ?? {})[0]?.c === 70.5, Object.keys(mkt));
+t("folded day row keeps its open, high, low and volume", JSON.stringify(decodeHist(part("CM.CL1", "te") ?? {})[0]) === JSON.stringify({ t: "2026-09-01", c: 70.5, o: 70, h: 71, l: 69.5, v: 1000 }), decodeHist(part("CM.CL1", "te") ?? {}));
 t("recent day doc kept", !!mkt["d-2026-10-28"]);
 t("meta note written", String((mkt._meta as { note?: string }).note).startsWith("API sync 2026-10-29"), mkt._meta);
 
@@ -97,6 +100,7 @@ const adm = Object.fromEntries(store.dump().adm_inst.map((d) => [d.id, d.data as
 const mtn = adm["AD.NG.MTNN"];
 t("NGX desk listing: parts merged and today's close appended", JSON.stringify(mtn.d) === JSON.stringify(["2026-10-27", "2026-10-28", "2026-10-29"]) && JSON.stringify(mtn.c) === JSON.stringify([450, 452, 455.5]) && mtn.parts === 1, mtn);
 t("NGX desk listing: stale part docs deleted", !adm["AD.NG.MTNN~p1"]);
+t("NGX desk listing: volume column added, earlier days null", JSON.stringify(mtn.arr) === '["d","c","vol"]' && JSON.stringify(mtn.vol) === "[null,null,1250000]", { arr: mtn.arr, vol: mtn.vol });
 t("NGX desk listing: source noted", /NGX Pulse/.test(String(mtn.src)) && /earlier: desk/.test(String(mtn.src)), mtn.src);
 t("NGX listing without a quote untouched", JSON.stringify(adm["AD.NG.NOPE"].c) === "[10]");
 
@@ -124,3 +128,4 @@ t("no providers: no writes", r0.resolved === 0 && JSON.stringify(empty.dump()) =
 
 console.log(fails ? `\n${fails} market-sync test(s) failed` : "\nAll market-sync tests passed");
 process.exit(fails ? 1 : 0);
+

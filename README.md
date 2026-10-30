@@ -169,10 +169,13 @@ writes them into the `mkt` collection the app already reads. In the browser
 | NGX All-Share and the data desk's NGX listings | NGX Pulse → Mansa → MyStocks Africa → Africa API |
 
 Each run writes:
-- `mkt/d-<date>`: that day's closes (`[close, change, date, source]` per instrument)
+- `mkt/d-<date>`: that day's closes (`[close, change, date, source, note, [open, high, low, volume]]` per instrument;
+  the last two only when present: open, high, low and volume come from EODHD, FMP, Marketstack and Alpha Vantage quotes)
 - `mkt/_meta`: a one-line summary shown on the Sources panel
 - `mkt/_hist`: an index of instruments that have history, with their last date
-- `mkthist/<id>`: each instrument's daily history, one series per source (FRED
+- `mkthist/<id>`: each instrument's daily history, one series per source, with open, high, low and
+  volume arrays (`o`, `h`, `l`, `v`) when the provider has them, on the same split- and dividend-adjusted
+  basis as the closes (FRED
   every week; metered providers backfill up to `MARKET_HISTORY_BUDGET`
   instruments per run)
 

@@ -16,9 +16,11 @@ import { createMyStocksAfrica } from "@/lib/providers/mystocks-africa";
 import { createNgxPulse } from "@/lib/providers/ngx-pulse";
 import type { FredSpec } from "./instruments";
 
-/** One observation. `ch` is the change from the previous close when the provider gives it. */
-export type Obs = { t: string; c: number; ch: number | null };
-export type Point = { t: string; c: number };
+/** A day's open, high, low and volume, when the provider gives them (any may be null). */
+export type Bar = { o: number | null; h: number | null; l: number | null; v: number | null };
+/** One observation. `ch` is the change from the previous close when the provider gives it; `x` the day's range and volume. */
+export type Obs = { t: string; c: number; ch: number | null; x?: Bar };
+export type Point = { t: string; c: number } & Partial<Bar>;
 
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined || v === "" || v === "NA") return null;
@@ -34,6 +36,18 @@ const day = (v: unknown): string | null => {
   const s = String(v); if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   const t = Date.parse(s); return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : null;
 };
+/** A Bar, or undefined when the provider gave none of the four. Zero volume (indices, FX) counts as none. */
+export function bar(o: unknown, h: unknown, l: unknown, v: unknown): Bar | undefined {
+  const pos = (x: unknown) => { const n = num(x); return n !== null && n > 0 ? n : null; };
+  const b = { o: num(o), h: num(h), l: num(l), v: pos(v) };
+  return b.o === null && b.h === null && b.l === null && b.v === null ? undefined : b;
+}
+/** A daily row on the adjusted-close basis: open, high and low scaled by adjusted ÷ raw close, volume by its inverse (splits). */
+function adjBar(c: number, raw: number | null, o: unknown, h: unknown, l: unknown, v: unknown): Partial<Bar> {
+  const b = bar(o, h, l, v); if (!b) return {};
+  const k = raw && raw > 0 ? c / raw : 1; const sc = (x: number | null) => (x === null ? null : x * k);
+  return { o: sc(b.o), h: sc(b.h), l: sc(b.l), v: b.v === null ? null : Math.round(b.v / k) };
+}
 const chunk = <T>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 const arr = (x: unknown): Record<string, unknown>[] => (Array.isArray(x) ? x : x && typeof x === "object" ? [x] : []) as Record<string, unknown>[];
 
@@ -53,20 +67,20 @@ export async function eodhdLatest(symbols: string[]): Promise<Map<string, Obs>> 
       const code = String(r.code ?? ""); const c = num(r.close); const t = day(r.timestamp);
       if (!code || c === null || !t) continue;
       const key = group.find((s) => s.toUpperCase() === code.toUpperCase()) ?? code;
-      out.set(key, { t, c, ch: num(r.change) });
+      out.set(key, { t, c, ch: num(r.change), x: bar(r.open, r.high, r.low, r.volume) });
     }
   }
   return out;
 }
 export async function eodhdHistory(symbol: string, from: string): Promise<Point[]> {
   const rows = await createEodhd().eod(symbol, { from, period: "d", order: "a" });
-  return arr(rows).flatMap((r) => { const c = num(r.adjusted_close) ?? num(r.close); const t = day(r.date); return c !== null && t ? [{ t, c }] : []; });
+  return arr(rows).flatMap((r) => { const c = num(r.adjusted_close) ?? num(r.close); const t = day(r.date); return c !== null && t ? [{ t, c, ...adjBar(c, num(r.close), r.open, r.high, r.low, r.volume) }] : []; });
 }
 
 // --- Financial Modeling Prep ------------------------------------------------------
 export async function fmpLatest(symbols: string[]): Promise<Map<string, Obs>> {
   const fmp = createFmp(); const out = new Map<string, Obs>();
-  const put = (r: Record<string, unknown>) => { const s = String(r.symbol ?? ""); const c = num(r.price); const t = day(r.timestamp); if (s && c !== null && t) out.set(s, { t, c, ch: num(r.change) }); };
+  const put = (r: Record<string, unknown>) => { const s = String(r.symbol ?? ""); const c = num(r.price); const t = day(r.timestamp); if (s && c !== null && t) out.set(s, { t, c, ch: num(r.change), x: bar(r.open, r.dayHigh, r.dayLow, r.volume) }); };
   try {
     for (const group of chunk(symbols, 100)) for (const r of arr(await fmp.get("/batch-quote", { symbols: group.join(",") }))) put(r);
   } catch {
@@ -78,7 +92,7 @@ export async function fmpLatest(symbols: string[]): Promise<Map<string, Obs>> {
 export async function fmpHistory(symbol: string, from: string): Promise<Point[]> {
   const res = await createFmp().historicalEod(symbol, from);
   const rows = Array.isArray(res) ? res : arr((res as { historical?: unknown })?.historical);
-  return arr(rows).flatMap((r) => { const c = num(r.adjClose) ?? num(r.close) ?? num(r.price); const t = day(r.date); return c !== null && t ? [{ t, c }] : []; }).sort((a, b) => (a.t < b.t ? -1 : 1));
+  return arr(rows).flatMap((r) => { const c = num(r.adjClose) ?? num(r.close) ?? num(r.price); const t = day(r.date); return c !== null && t ? [{ t, c, ...adjBar(c, num(r.close) ?? c, r.open, r.high, r.low, r.volume) }] : []; }).sort((a, b) => (a.t < b.t ? -1 : 1));
 }
 
 // --- Marketstack ---------------------------------------------------------------
@@ -86,13 +100,18 @@ export async function marketstackLatest(symbols: string[]): Promise<Map<string, 
   const ms = createMarketstack(); const out = new Map<string, Obs>();
   for (const group of chunk(symbols, 100)) {
     const res = await ms.eodLatest(group.join(","));
-    for (const r of arr(res.data)) { const s = String(r.symbol ?? ""); const c = num(r.close); const t = day(r.date); if (s && c !== null && t) out.set(s, { t, c, ch: null }); }
+    for (const r of arr(res.data)) { const s = String(r.symbol ?? ""); const c = num(r.close); const t = day(r.date); if (s && c !== null && t) out.set(s, { t, c, ch: null, x: bar(r.open, r.high, r.low, r.volume) }); }
   }
   return out;
 }
 export async function marketstackHistory(symbol: string, from: string): Promise<Point[]> {
   const res = await createMarketstack().eod(symbol, { date_from: from, limit: 1000 });
-  return arr(res.data).flatMap((r) => { const c = num(r.adj_close) ?? num(r.close); const t = day(r.date); return c !== null && t ? [{ t, c }] : []; }).sort((a, b) => (a.t < b.t ? -1 : 1));
+  return arr(res.data).flatMap((r) => {
+    const c = num(r.adj_close) ?? num(r.close); const t = day(r.date); if (c === null || !t) return [];
+    // Marketstack gives adjusted open/high/low/volume itself when it has them.
+    const x = num(r.adj_open) !== null ? { ...bar(r.adj_open, r.adj_high, r.adj_low, r.adj_volume) } : adjBar(c, num(r.close) ?? c, r.open, r.high, r.low, r.volume);
+    return [{ t, c, ...x }];
+  }).sort((a, b) => (a.t < b.t ? -1 : 1));
 }
 
 // --- Alpha Vantage (free keys allow 25 calls a day, so callers pass a budget) ----
@@ -107,7 +126,7 @@ export async function alphaVantageLatest(symbols: string[], budget: number): Pro
         if (c !== null && t) out.set(s, { t, c, ch: null });
       } else {
         const q = (await av.quote(s))["Global Quote"]; const c = num(q?.["05. price"]); const t = day(q?.["07. latest trading day"]);
-        if (c !== null && t) out.set(s, { t, c, ch: num(q?.["09. change"]) });
+        if (c !== null && t) out.set(s, { t, c, ch: num(q?.["09. change"]), x: bar(q?.["02. open"], q?.["03. high"], q?.["04. low"], q?.["06. volume"]) });
       }
     } catch (e) {
       // A rate-limit notice means the rest would fail too.
@@ -145,11 +164,12 @@ export async function exchangeRateLatest(pairs: string[]): Promise<Map<string, O
 // --- African market sources (NGX) --------------------------------------------------
 // The four African APIs return differently named fields, so rows are read by
 // trying the common names. A row without a recognisable symbol and price is skipped.
-export type AfricanRow = { symbol: string; c: number; ch: number | null; t: string | null };
+export type AfricanRow = { symbol: string; c: number; ch: number | null; t: string | null; vol?: number | null };
 const pick = (r: Record<string, unknown>, keys: string[]) => { for (const k of keys) if (r[k] !== undefined && r[k] !== null && r[k] !== "") return r[k]; return undefined; };
 const SYM = ["symbol", "ticker", "code", "stock_code", "security"];
 const PRICE = ["current_price", "price", "close", "close_price", "closing_price", "last_price", "last", "lastPrice", "value"];
 const CHANGE = ["change", "price_change", "change_amount"];
+const VOLUME = ["volume", "traded_volume", "total_volume", "vol", "quantity"];
 const DATE = ["date", "trade_date", "trading_date", "as_of", "asOf", "last_updated", "updated_at", "timestamp", "price_date"];
 
 /** Finds the first array of row objects in a response ({ data: [...] }, { stocks: [...] }, [...], ...). */
@@ -163,7 +183,8 @@ export function rowsOf(body: unknown, depth = 0): Record<string, unknown>[] {
 export function readRow(r: Record<string, unknown>): AfricanRow | null {
   const symbol = String(pick(r, SYM) ?? "").trim().toUpperCase(); const c = num(pick(r, PRICE));
   if (!symbol || c === null || c <= 0) return null;
-  return { symbol, c, ch: num(pick(r, CHANGE)), t: day(pick(r, DATE)) };
+  const vol = num(pick(r, VOLUME));
+  return { symbol, c, ch: num(pick(r, CHANGE)), t: day(pick(r, DATE)), ...(vol !== null && vol > 0 ? { vol: Math.round(vol) } : {}) };
 }
 /** Depth-first search for a numeric field whose name matches `re` (used for the All-Share index level). */
 export function findNumber(body: unknown, re: RegExp, depth = 0): number | null {
