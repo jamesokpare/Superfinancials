@@ -86,6 +86,10 @@ mocked responses.
 
 ## Remaining: data still simulated
 
+The full picture of each remaining gap (what runs now, free sources to add, paid options with prices,
+licence warnings) is in `docs/data-gaps-2026-10.md`. **EODHD and FMP need a commercial/display licence for public use.**
+
+
 - **Instruments with no source (27).** EM sovereign spread, TED spread, Nigerian T-bills
   (3M, 6M, 1Y) and money-market rates (OPR, overnight, MPR), commodities (TTF, JKM,
   Newcastle coal, uranium, aluminium, nickel, zinc, iron ore, lithium, palm oil,

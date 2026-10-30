@@ -295,7 +295,9 @@ export async function ipoCalendar(now: Date): Promise<CalEvent[]> {
 
 // --- commodity prices for instruments without a market-data source -------------------------------
 /** A price series for an existing app instrument (written as a data-desk instrument doc, adm_inst/<id>). */
-export type InstSeries = { id: string; points: Point[]; src: string; note: string };
+export type InstSeries = { id: string; points: Point[]; src: string; note: string;
+  /** For an instrument the app doesn't have yet: created as a data-desk instrument with this description. */
+  meta?: { type: string; tk: string; name: string; exch: string; country: string; ccy: string; sector: string; industry: string } };
 
 /**
  * World Bank Commodity Price Data (the "Pink Sheet"), monthly averages. CC BY 4.0.
@@ -544,5 +546,82 @@ export function recessionSpans(points: Point[]): { from: string; to: string }[] 
   const out: { from: string; to: string }[] = []; let s: string | null = null; let last = "";
   for (const p of points) { if (p.v === 1 && !s) s = p.t; if (p.v !== 1 && s) { out.push({ from: s, to: last }); s = null; } last = p.t; }
   if (s) out.push({ from: s, to: last });
+  return out;
+}
+
+// --- FRED series shown with their original publisher's credit -----------------------------------
+/**
+ * Series read through the FRED API (FRED_API_KEY), each credited to its original publisher.
+ * Only series whose publishers allow reuse with attribution are listed (U.S. government data,
+ * Federal Reserve Banks' surveys); proprietary series on FRED (ICE BofA, S&P, Moody's) are left out.
+ * `diff` builds a spread from two series (a − b, in basis points when `bp`).
+ */
+export type FredSpec2 = { id: string; code: string; name: string; unit: string; cat: MacroSeries["cat"]; freq: "D" | "W" | "M"; src: string; from?: number; minus?: string; bp?: boolean; notes: string };
+export const FRED_SERIES: FredSpec2[] = [
+  { id: "T5YIE", code: "BE5Y", name: "5-year breakeven inflation (Treasury market)", unit: "%", cat: "in", freq: "D", src: "U.S. Treasury and Federal Reserve via FRED (T5YIE)", notes: "5-year Treasury yield minus 5-year TIPS yield: the inflation rate the bond market prices in. A free stand-in for a 5-year inflation swap." },
+  { id: "T10YIE", code: "BE10Y", name: "10-year breakeven inflation (Treasury market)", unit: "%", cat: "in", freq: "D", src: "U.S. Treasury and Federal Reserve via FRED (T10YIE)", notes: "10-year Treasury yield minus 10-year TIPS yield. A free stand-in for a 10-year inflation swap." },
+  { id: "DCPF3M", minus: "DTB3", bp: true, code: "CPBILL", name: "Bank funding stress: 3-month AA financial commercial paper minus 3-month Treasury bill", unit: "bp", cat: "mp", freq: "D", src: "Federal Reserve Board (commercial paper rates and H.15 Treasury bills), via FRED; calculated", notes: "Unsecured short-term borrowing cost of highly rated financial firms over the 3-month bill rate, in basis points. Like the old TED spread it carries bank credit risk; both rates are on a discount basis." },
+  { id: "SOFR", minus: "DTB3", bp: true, code: "FUNDSPRD", name: "Funding spread: SOFR minus 3-month Treasury bill (TED spread replacement)", unit: "bp", cat: "mp", freq: "D", src: "Federal Reserve Bank of New York (SOFR) and Federal Reserve Board H.15 (3-month bill), via FRED; calculated", notes: "Secured overnight funding rate minus the 3-month Treasury bill rate (discount basis), in basis points. Replaces the TED spread, which was discontinued with LIBOR. Widening signals funding stress." },
+  // Regional Federal Reserve manufacturing surveys: free, attributable stand-ins for the (licensed) ISM PMI. Diffusion indexes: above 0 = expansion.
+  { id: "GACDFSA066MSFRBPHI", code: "PHILLYMFG", name: "Philadelphia Fed manufacturing: current general activity", unit: "index (diffusion, SA)", cat: "gr", freq: "M", src: "Federal Reserve Bank of Philadelphia, Manufacturing Business Outlook Survey (via FRED)", notes: "Share of firms reporting increases minus share reporting decreases, seasonally adjusted. Above zero means expansion. Not the ISM PMI, which is licensed." },
+  { id: "GACDISA066MSFRBNY", code: "EMPIREMFG", name: "New York Fed Empire State manufacturing: general business conditions", unit: "index (diffusion, SA)", cat: "gr", freq: "M", src: "Federal Reserve Bank of New York, Empire State Manufacturing Survey (via FRED)", notes: "Diffusion index, seasonally adjusted; above zero means expansion. Not the ISM PMI." },
+  { id: "BACTSAMFRBDAL", code: "DALLASMFG", name: "Dallas Fed Texas manufacturing: general business activity", unit: "index (diffusion, SA)", cat: "gr", freq: "M", src: "Federal Reserve Bank of Dallas, Texas Manufacturing Outlook Survey (via FRED)", notes: "Diffusion index, seasonally adjusted; above zero means expansion. Not the ISM PMI." },
+  { id: "T5YIFR", code: "BE5Y5Y", name: "5-year, 5-year forward inflation expectation", unit: "%", cat: "in", freq: "D", src: "Federal Reserve Bank of St. Louis via FRED (T5YIFR)", notes: "Expected average inflation over the five years starting five years from now, from Treasury and TIPS yields." },
+];
+/** Daily or monthly observations for the listed FRED series (and spreads between two of them). */
+export async function fredSeriesList(specs: FredSpec2[] = FRED_SERIES, now = new Date()): Promise<MacroSeries[]> {
+  const key = requireKey("FRED", "FRED_API_KEY"); const out: MacroSeries[] = []; const errors: string[] = [];
+  const get = async (id: string, from: string) => {
+    const r = await getJson<{ observations?: { date: string; value: string }[] }>("FRED", buildUrl("https://api.stlouisfed.org/fred", "/series/observations", { api_key: key, file_type: "json", series_id: id, observation_start: from }));
+    return new Map((r.observations ?? []).flatMap((o) => { const v = Number(o.value); return o.value !== "." && Number.isFinite(v) ? [[o.date, v] as [string, number]] : []; }));
+  };
+  // FRED carries some proprietary series (ICE BofA, S&P, Moody's) whose owners forbid reuse without permission.
+  // Their notes say so; such a series is skipped rather than shown.
+  const restricted = async (id: string) => {
+    const r = await getJson<{ seriess?: { notes?: string }[] }>("FRED", buildUrl("https://api.stlouisfed.org/fred", "/series", { api_key: key, file_type: "json", series_id: id }));
+    return /prior written permission|reproduction (is )?prohibited|not be reproduced|all rights reserved/i.test(r.seriess?.[0]?.notes ?? "");
+  };
+  for (const s of specs) {
+    const from = `${now.getUTCFullYear() - (s.from ?? (s.freq === "D" ? 5 : 20))}-01-01`;
+    try {
+      const blocked = (await Promise.all([s.id, ...(s.minus ? [s.minus] : [])].map((id) => restricted(id).catch(() => false)))).some(Boolean);
+      if (blocked) { errors.push(`${s.id}: the series owner restricts reuse (FRED notes); skipped`); continue; }
+      const a = await get(s.id, from); const b = s.minus ? await get(s.minus, from) : null;
+      const pts = [...a].flatMap(([d, v]) => { if (b && !b.has(d)) return []; const x = b ? (v - b.get(d)!) * (s.bp ? 100 : 1) : v; const t = s.freq === "M" ? periodEnd(d.slice(0, 7)) : d; return t ? [{ t, v: Number(x.toFixed(s.bp ? 1 : 3)) }] : []; });
+      if (pts.length) out.push({ cc: "US", code: s.code, name: s.name, unit: s.unit, cat: s.cat, freq: s.freq, src: s.src, url: `https://fred.stlouisfed.org/series/${s.id}`, notes: s.notes, points: sortPts(pts) });
+    } catch (e) { errors.push(`${s.id}: ${(e as Error).message}`); }
+  }
+  if (errors.length === specs.length) throw new ProviderError("FRED", errors[0]);
+  return out;
+}
+
+// --- Market proxies for licensed benchmarks (EODHD end-of-day prices) ------------------------------
+/**
+ * Exchange-traded funds that track a benchmark the app can't show without a licence. Each becomes a
+ * data-desk instrument named as a proxy, with a note saying what it is and who owns the real benchmark.
+ */
+export const PROXIES: { id: string; sym: string; tk: string; name: string; exch: string; of: string; owner: string }[] = [
+  { id: "AD.PX.SRUUF", sym: "SRUUF.US", tk: "SRUUF", name: "Sprott Physical Uranium Trust (uranium proxy)", exch: "OTC (TSX: U.UN)", of: "the U3O8 spot price", owner: "UxC and TradeTech (licensed)" },
+  { id: "AD.PX.URNM", sym: "URNM.US", tk: "URNM", name: "Sprott Uranium Miners ETF (uranium proxy)", exch: "NYSE Arca", of: "uranium prices, through uranium miners", owner: "UxC and TradeTech (licensed)" },
+  { id: "AD.PX.LIT", sym: "LIT.US", tk: "LIT", name: "Global X Lithium & Battery Tech ETF (lithium proxy)", exch: "NYSE Arca", of: "lithium prices, through lithium and battery equities", owner: "Fastmarkets, Benchmark, SMM (licensed)" },
+  { id: "AD.PX.KRBN", sym: "KRBN.US", tk: "KRBN", name: "KraneShares Global Carbon ETF (carbon proxy)", exch: "NYSE Arca", of: "carbon allowance prices (EUA, CCA, UKA, RGGI futures)", owner: "ICE and EEX (licensed)" },
+  { id: "AD.PX.BDRY", sym: "BDRY.US", tk: "BDRY", name: "Breakwave Dry Bulk Shipping ETF (dry-bulk freight proxy)", exch: "NYSE Arca", of: "the Baltic Dry Index, through dry-bulk freight futures", owner: "the Baltic Exchange (licensed)" },
+  { id: "AD.PX.BWET", sym: "BWET.US", tk: "BWET", name: "Breakwave Tanker Shipping ETF (TD3C proxy)", exch: "NYSE Arca", of: "the TD3C VLCC tanker rate, through tanker freight futures", owner: "the Baltic Exchange (licensed)" },
+  { id: "AD.PX.DJP", sym: "DJP.US", tk: "DJP", name: "iPath Bloomberg Commodity Index ETN (BCOM proxy)", exch: "NYSE Arca", of: "the Bloomberg Commodity Index (total return)", owner: "Bloomberg (licensed)" },
+  { id: "AD.PX.GSG", sym: "GSG.US", tk: "GSG", name: "iShares S&P GSCI Commodity-Indexed Trust (S&P GSCI proxy)", exch: "NYSE Arca", of: "the S&P GSCI", owner: "S&P Dow Jones Indices (licensed)" },
+];
+type EodRow = { date?: string; close?: unknown; adjusted_close?: unknown };
+/** About 18 months of daily closes for each proxy. One failing symbol loses only that one. */
+export async function proxyPrices(now: Date): Promise<InstSeries[]> {
+  const from = dayAdd(now, -550); const out: InstSeries[] = []; const errors: string[] = [];
+  for (const p of PROXIES) {
+    try {
+      const rows = await eod<EodRow[]>(`/eod/${p.sym}`, { from, period: "d", order: "a" });
+      const points = (Array.isArray(rows) ? rows : []).flatMap((r) => { const v = Number(r.adjusted_close ?? r.close); return r.date && Number.isFinite(v) && v > 0 ? [{ t: String(r.date).slice(0, 10), v }] : []; });
+      if (points.length) out.push({ id: p.id, points, src: `EODHD end-of-day prices (${p.sym})`, note: `Proxy, not the benchmark: the price of ${p.tk}, an exchange-traded product that tracks ${p.of}. The benchmark itself belongs to ${p.owner}.`,
+        meta: { type: "etf", tk: p.tk, name: p.name, exch: p.exch, country: "US", ccy: "USD", sector: "Commodity proxies", industry: "Exchange-traded product" } });
+    } catch (e) { errors.push(`${p.sym}: ${(e as Error).message}`); }
+  }
+  if (errors.length === PROXIES.length) throw new ProviderError("EODHD", errors[0]);
   return out;
 }

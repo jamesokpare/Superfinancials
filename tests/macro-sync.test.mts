@@ -4,7 +4,7 @@
 // re-runs and dry runs.
 // Run: npm test
 import { runMacroSync, GEN } from "../src/lib/macro/sync";
-import { parseCsv, parsePinkSheet, periodEnd, parseIcs, recessionSpans } from "../src/lib/macro/sources";
+import { fredSeriesList, parseCsv, parsePinkSheet, periodEnd, parseIcs, recessionSpans } from "../src/lib/macro/sources";
 import { readXlsx, writeXlsx } from "../src/lib/macro/xlsx";
 import { memoryStore } from "../src/lib/market/store";
 
@@ -69,6 +69,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     const rows = c2018 ? [["DEU", "2025-12", "2.0"], ["DEU", "2026-09", "2.3"]] : [["USA", "2026-08", "2.9"], ["USA", "2026-09", "3.0"], ["GBR", "2026-09", "3.6"], ["DEU", "2025-12", "1.9"], ["XXX", "2026-09", "9"]];
     return csv("STRUCTURE,STRUCTURE_ID,ACTION,REF_AREA,FREQ,MEASURE,TIME_PERIOD,OBS_VALUE\n" + rows.filter(([a]) => areas.includes(a) || a === "XXX").map(([a, t, v]) => `dataflow,X,I,${a},M,CPI,${t},${v}`).join("\n") + "\n");
   }
+  if (url.hostname === "api.stlouisfed.org" && url.pathname.endsWith("/fred/series")) return json({ seriess: [{ id: url.searchParams.get("series_id"), notes: url.searchParams.get("series_id") === "BAMLEMCBPIOAS" ? "Copyright, 2026, ICE Data Indices. Reproduction of this data is prohibited except with prior written permission." : "Source: Board of Governors." }] });
   if (url.hostname === "api.stlouisfed.org" && url.pathname.endsWith("/series/observations")) return json({ observations: [
     { date: "2007-11-01", value: "0" }, { date: "2007-12-01", value: "1" }, { date: "2008-01-01", value: "1" }, { date: "2009-06-01", value: "1" }, { date: "2009-07-01", value: "0" },
     { date: "2020-02-01", value: "0" }, { date: "2020-03-01", value: "1" }, { date: "2020-04-01", value: "1" }, { date: "2020-05-01", value: "0" }, { date: "2026-09-01", value: "." },
@@ -132,6 +133,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   }
   if (url.hostname === "eodhd.com") {
     if (url.pathname === "/api/economic-events") return json([{ type: "Unemployment Rate", period: "Oct", country: "US", date: "2026-11-06 13:30:00", previous: 4.3, estimate: 4.3, actual: null }, { type: "No consensus", country: "US", date: "2026-11-06 13:30:00", estimate: null }]);
+    if (url.pathname.startsWith("/api/eod/")) { const sym = url.pathname.split("/").pop(); return sym === "GSG.US" ? json({ error: "boom" }, 500) : json([{ date: "2026-10-27", close: 21.5, adjusted_close: 21.4 }, { date: "2026-10-28", close: 21.9 }, { date: "2026-10-29", close: "NA" }]); }
     if (url.pathname === "/api/calendar/splits") return json({ type: "Splits", from: "x", to: "y", splits: [{ code: "NVDA.US", split: "4.000000/1.000000", date: "2026-11-20", optionable: "Y" }, { code: "TSLA.US", split: "1.000000/5.000000", date: "2026-11-21" }, { code: "ZZZZ.US", split: "2/1", date: "2026-11-20" }, { code: "VOD.LSE", split: "2/1", date: "2026-11-20" }] });
     if (url.pathname === "/api/calendar/dividends") return json({ data: [{ code: "MSFT.US", date: "2026-11-19", recordDate: "2026-11-20", paymentDate: "2026-12-11", value: 0.91, period: "Quarterly" }, { code: "ZZZZ.US", date: "2026-11-19", value: 1 }, { code: "SHEL.LSE", date: "2026-11-19", value: 1 }], meta: { total: 3, limit: 1000, offset: 0 } });
     if (url.pathname === "/api/calendar/ipos") return json({ ipos: [{ code: "BETA.US", name: "Beta Health", exchange: "NYSE", start_date: "2026-11-07", price_from: 10, price_to: 12, shares: 5000000, deal_type: "Expected" }] });
@@ -174,7 +176,7 @@ const ten = C.get("auto-ust-2026-11-10-91282CNX5");
 t("Treasury auctions: title, amount, category", ten?.title === "U.S. Treasury 10-Year Note auction (reopening)" && /US\$42\.0 bn/.test(String(ten?.notes)) && ten?.cat === "auc" && ten?.imp === 2, ten);
 t("calendar: owner events kept; stale and rescheduled auto events removed", C.has("desk-1") && !C.has("auto-ust-2026-11-03-OLD") && !C.has("auto-fred-10-2026-01-01") && r.events.removed === 2, [...C.keys()]);
 const meta = (await store.list("macrosync"))[0]?.data;
-t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total + r.funds.total && /24 of 24 sources/.test(String(meta?.note)), meta);
+t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total + r.funds.total && /27 of 27 sources/.test(String(meta?.note)), meta);
 
 const cpi = C.get("auto-eco-2026-11-12-us-cpi-yoy-oct");
 t("economic calendar: consensus, prior, time; low-importance and unknown countries dropped", cpi?.cons === "3.1" && cpi?.prior === "3" && cpi?.actual === "" && cpi?.time === "13:30" && cpi?.imp === 3 && ![...C.keys()].some((k) => /minor-survey|unknown-place/.test(k)), cpi);
@@ -236,6 +238,17 @@ fmpPremium = true;
 const fb = await runMacroSync({ store: memoryStore(), now: NOW, only: ["econ-calendar", "ipos", "dividends"] });
 t("FMP plan error → EODHD answers the economic and IPO calendars", fb.sources["econ-calendar"].events === 1 && fb.sources.ipos.events === 1 && fb.sources.dividends.events === 2, fb.sources);
 fmpPremium = false;
+// Proxies for licensed benchmarks become data-desk instruments, clearly named
+const pm = memoryStore(); const pr = await runMacroSync({ store: pm, now: NOW, only: ["proxies"] }); const PI = new Map((await pm.list("adm_inst")).map((d) => [d.id, d.data as Record<string, any>])); // eslint-disable-line @typescript-eslint/no-explicit-any
+const ur = PI.get("AD.PX.SRUUF");
+t("proxies: new desk instruments named as proxies, with what they stand for and who owns the benchmark; bad prices skipped; one failing symbol loses only that one", ur?.new === true && ur.meta.name === "Sprott Physical Uranium Trust (uranium proxy)" && ur.meta.type === "etf" && /Proxy, not the benchmark/.test(ur.note) && /UxC and TradeTech/.test(ur.note) && JSON.stringify(ur.c) === "[21.4,21.9]" && !PI.has("AD.PX.GSG") && PI.size === 7 && !pr.sources.proxies.error, { ur, n: PI.size, src: pr.sources.proxies });
+// FRED series credited to their publishers; spreads; series whose owners restrict reuse are skipped
+const fs2 = await fredSeriesList([{ id: "BAMLEMCBPIOAS", code: "X", name: "x", unit: "%", cat: "mk", freq: "D", src: "ICE", notes: "" }, { id: "DCPF3M", minus: "DTB3", bp: true, code: "CPBILL", name: "cp", unit: "bp", cat: "mp", freq: "D", src: "Fed", notes: "n" }], NOW);
+t("FRED: restricted (ICE) series skipped; spread in basis points", fs2.length === 1 && fs2[0].code === "CPBILL" && fs2[0].points.every((p) => p.v === 0), fs2.map((x) => [x.code, x.points.length]));
+// Central-bank calendar: official decision dates as events, credited to each bank
+const cbs = memoryStore(); await runMacroSync({ store: cbs, now: NOW, only: ["cb-calendar"] }); const CB = new Map((await cbs.list("adm_cal")).map((d) => [d.id, d.data as Record<string, any>])); // eslint-disable-line @typescript-eslint/no-explicit-any
+const fomc = CB.get("auto-cbcal-us-2026-12-09");
+t("central-bank calendar: FOMC, ECB, BoE … with the bank's calendar as source; no past-year leftovers", fomc?.cat === "cb" && fomc.imp === 3 && /Federal Reserve/.test(fomc.srcName) && fomc.url.startsWith("https://www.federalreserve.gov/") && CB.has("auto-cbcal-eu-2027-02-04") && CB.has("auto-cbcal-za-2026-11-19") && [...CB.values()].every((e) => e.date >= "2026-08-30"), { fomc, n: CB.size });
 // EIA: weekly, daily and monthly series; one failing series loses only that one
 const em = memoryStore(); const er = await runMacroSync({ store: em, now: NOW, only: ["eia"] }); const ES = new Map((await em.list("adm_series")).map((d) => [d.id, d.data as { d?: string[]; v?: number[]; freq?: string; unit?: string }]));
 t("EIA: crude stocks in million barrels, Henry Hub daily, power generation monthly in TWh at month end", JSON.stringify(ES.get("US.CRUDEINV")?.v) === "[421.8,420.5]" && ES.get("US.HENRYHUB")?.v?.[0] === 3.12 && ES.get("US.HENRYHUB")?.freq === "D" && JSON.stringify(ES.get("US.POWERGEN")?.d) === '["2026-08-31"]' && ES.get("US.POWERGEN")?.v?.[0] === 421.338 && ES.get("US.POWERGEN")?.unit === "TWh" && !ES.has("US.SPRINV") && !er.sources.eia.error, { keys: [...ES.keys()], src: er.sources.eia });
