@@ -36,6 +36,9 @@ Research and build of 30 October 2026. Four research passes ran web searches. Ev
 | Fund performance | Fund-level net IRR, TVPI, DPI, commitment, paid-in, distributed and value as each pension reports them (CalPERS private equity and private debt, Washington State Investment Board, Oregon OPERF private equity and real assets), weekly | Public records, credited per pension and report with the as-of date. WSIB IRRs are calculated by Hamilton Lane from GP data |
 | Crowdfunding and Reg A raises | Regulation Crowdfunding (Form C) and Regulation A offerings in the "raising now" list, with portal, target, maximum and deadline | SEC quarterly data sets, public domain |
 | UK amounts raised | Amount raised per SH01 (shares × amount paid including premium), read from the filing PDF; scanned paper forms stay blank | Companies House Document API, Open Government Licence v3.0 |
+| EM sovereign spread | **EM sovereign spread proxy** (`US.EMSPRD`, bp): iShares EMB average yield to maturity minus the Treasury par yield interpolated at the fund's effective duration, daily, history built day by day | Calculated from BlackRock iShares published fund data and U.S. Treasury yields. Labelled "not the J.P. Morgan EMBI". **BlackRock's website terms restrict commercial reuse of site content; only the calculated spread is stored. Confirm with BlackRock before public display at scale.** |
+| EU carbon | **EUA primary auction clearing price** (`EU.EUAAUC`, EUR/tCO2), several auctions a week, days with more than one auction averaged | EEX auction reports (common auction platform under the EU Auctioning Regulation). EEX's terms for reusing the report were not confirmed; the secondary-market EUA futures price stays paid (EEX from €75/month) |
+| CBN, CBK, BoG, CBE, Banxico decisions | Meeting dates read automatically from each bank's own notice pages ("next MPC meeting…", BoG's yearly dates page, Banxico's announcement calendar), added to the calendar once published | Each bank's official notice, linked on every event |
 | (earlier PRs) | IMF projections, NBER recessions, SEC filings, EIA, SH01 on company records | — |
 
 ## Gap by gap
@@ -60,7 +63,7 @@ Research and build of 30 October 2026. Four research passes ran web searches. Ev
 
 **Done:** a curated calendar for 15 banks, linked to official pages.
 
-**Not yet published, so left out:** CBN, CBK, Bank of Ghana, CBE, Banxico, BoJ's September and October 2027 dates, RBNZ's eighth 2027 date, and the rest of CBRT 2027. Add them in the Data studio when announced, or update `cbcal.ts`.
+**Read from the banks' notices once posted** (`src/lib/macro/cbnotices.ts`): CBN, CBK, Bank of Ghana, CBE, Banxico. **Not yet published:** BoJ's September and October 2027 dates, RBNZ's eighth 2027 date, and the rest of CBRT 2027. Add them in the Data studio when announced, or update `cbcal.ts`.
 
 **Machine-readable:**
 - Fed RSS for monetary-policy releases.
@@ -94,7 +97,7 @@ Research and build of 30 October 2026. Four research passes ran web searches. Ev
 - **EU carbon:** EEX EUA primary-auction results ([EEX](https://www.eex.com/en/market-data/environmentals/eu-ets-auctions); terms unconfirmed).
 - **California carbon:** CARB/Québec quarterly auction results (government).
 - **UK carbon:** UKA auctions via ICE.
-- **Daily carbon:** Ember's daily EUA series is CC-BY-4.0 on its European electricity prices page ([Ember](https://ember-energy.org/data/european-electricity-prices-and-costs/)). Confirm the licence covers the carbon series.
+- **Daily carbon:** Ember's carbon prices are **not usable**: its European electricity prices tool takes EU and UK ETS prices (front-December contract) from Montel, a commercial vendor, and states no open licence. The app uses EEX's EUA primary auction clearing prices instead (below).
 
 **Paid:**
 

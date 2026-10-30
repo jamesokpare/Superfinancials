@@ -8,7 +8,9 @@ import { runMacroSync } from "../src/lib/macro/sync";
 import { cipForward, impliedForward, parseCboeHistory, policyPath, realisedVol, vixRatios } from "../src/lib/macro/derived";
 import { jsonStatRows, nbsPmiLinks, parseBoeSpot, parseNbsPmi, parseOecdCli } from "../src/lib/macro/surveys";
 import { FRED_SERIES } from "../src/lib/macro/sources";
-import { boeRows, counts, JS, LIST, nbs, newSourceFetch, REL } from "./fixtures/macro-new-sources";
+import { datesIn, noticeDates } from "../src/lib/macro/cbnotices";
+import { eexReportLinks, embSpread, interpCurve, parseEmbPage } from "../src/lib/macro/spreads";
+import { boeRows, CB_PAGES, counts, EEX_PAGE, EMB_HTML, JS, LIST, nbs, newSourceFetch, REL } from "./fixtures/macro-new-sources";
 import { memoryStore } from "../src/lib/market/store";
 
 process.env.MACRO_RETRY_MS = "5"; process.env.MACRO_GAP_MS = "0";
@@ -48,6 +50,14 @@ const nb = parseNbsPmi(REL("October 2026", "50.1", "50.6", "50.8"), "Purchasing 
 t("NBS release: the three headline indexes and the month", JSON.stringify(nb) === JSON.stringify({ month: "2026-10-31", mfg: 50.1, nonmfg: 50.6, comp: 50.8 }), nb);
 t("Cleveland Fed expected inflation series listed (FRED EXPINF*)", ["EXPINF1YR", "EXPINF10YR", "EXPINF30YR"].every((id) => FRED_SERIES.some((s) => s.id === id && /Cleveland/.test(s.src))));
 
+t("EMB page: yield, duration and as-of date", JSON.stringify(parseEmbPage(EMB_HTML)) === JSON.stringify({ t: "2026-10-28", ytm: 6.16, dur: 6.59 }), parseEmbPage(EMB_HTML));
+t("curve interpolation (linear, flat beyond the ends)", near(interpCurve([[5, 4], [10, 4.5]], 6.59) ?? undefined, 4.159) && interpCurve([[5, 4], [10, 4.5]], 40) === 4.5);
+const es = embSpread({ t: "2026-10-28", ytm: 6.16, dur: 6.59 }, { "YD.US5": [{ t: "2026-10-27", v: 4.0 }], "YD.US10": [{ t: "2026-10-28", v: 4.5 }, { t: "2026-10-29", v: 9 }] });
+t("EMB spread: yield minus Treasury at its duration, in bp; uses curve data on or before the as-of date", es[0]?.points[0].v === 200.1 && es[0].unit === "bp" && /not the J.P. Morgan EMBI/.test(es[0].notes), es);
+t("EEX: this year's auction report linked, calendars and old years skipped", JSON.stringify(eexReportLinks(EEX_PAGE, 2026)) === JSON.stringify(["https://www.eex.com/fileadmin/EEX/Downloads/Market_Data/Environmentals/EUA_Primary_Auction_Report_2026.xlsx"]), eexReportLinks(EEX_PAGE, 2026));
+t("dates in notices: ranges give the last day; English and Spanish", JSON.stringify(datesIn("Monday 23rd and Tuesday 24th November, 2026")) === '["2026-11-24"]' && JSON.stringify(datesIn("March 16 to Wednesday, March 18, 2026")) === '["2026-03-18"]' && JSON.stringify(datesIn("el 6 de noviembre de 2026")) === '["2026-11-06"]' && JSON.stringify(datesIn("23rd – 25th November 2026")) === '["2026-11-25"]', [datesIn("Monday 23rd and Tuesday 24th November, 2026"), datesIn("March 16 to Wednesday, March 18, 2026"), datesIn("23rd – 25th November 2026")]);
+t("notice dates: MPC sentences only, future only", JSON.stringify(noticeDates(CB_PAGES["www.cbe.org.eg"], NOW)) === '["2026-12-24"]' && JSON.stringify(noticeDates(CB_PAGES["www.bog.gov.gh"], NOW)) === '["2026-11-25"]', [noticeDates(CB_PAGES["www.cbe.org.eg"], NOW), noticeDates(CB_PAGES["www.bog.gov.gh"], NOW)]);
+
 // --- the sync with fake publishers -----------------------------------------------------------------------------------
 const treasCsv = `Date,"1 Mo","2 Mo","3 Mo","6 Mo","1 Yr","2 Yr","5 Yr","10 Yr","30 Yr"\n10/28/2026,4.10,4.05,4.00,3.80,3.50,3.40,3.60,4.00,4.50\n10/27/2026,4.11,4.06,4.01,3.82,3.52,3.41,3.61,4.01,4.51\n`;
 globalThis.fetch = (async (input: string | URL | Request) => {
@@ -62,7 +72,7 @@ const store = memoryStore();
 // SPX history in the market store (t0 + day gaps), for VIX minus realised volatility.
 await store.upsert("mkthist", [{ id: "IX.SPX", data: { type: "hist", id: "IX.SPX", parts: { eodhd: { t0: "2026-09-27", c: Array.from({ length: 32 }, (_, i) => 5000 * (1 + (i % 2 ? 0.01 : -0.01))), dd: Array(31).fill(1), checked: "x" } } } }]);
 await store.upsert("adm_series", [{ id: "CN.PMIMFG", data: { kind: "eco", cc: "CN", code: "PMIMFG", d: ["2026-08-31"], v: [49.4], gen: "macro-sync" } }]);
-const r = await runMacroSync({ store, now: NOW, only: ["oecd-cli", "ec-sentiment", "ecb-spf", "nbs-pmi", "boe-inflation", "treasury-curve", "nyfed", "fx-forwards", "vix-curve"] });
+const r = await runMacroSync({ store, now: NOW, only: ["oecd-cli", "ec-sentiment", "ecb-spf", "nbs-pmi", "boe-inflation", "treasury-curve", "nyfed", "fx-forwards", "vix-curve", "emb-spread", "eu-carbon", "cb-notices"] });
 const S = new Map((await store.list("adm_series")).map((d) => [d.id, d.data as Record<string, any>])); // eslint-disable-line @typescript-eslint/no-explicit-any
 t("every new source answered", Object.values(r.sources).every((s) => !s.error && !s.skipped), r.sources);
 t("OECD CLI and consumer confidence stored with credit", S.get("US.CLI")?.v?.[0] === 100.2 && S.get("JP.CCI")?.unit === "index (LTA = 100)" && /CC BY 4.0/.test(S.get("US.CLI")?.notes));
@@ -75,6 +85,10 @@ t("bill yields themselves are not stored as series", !S.has("US.TB1M") && ![...S
 const fwd = S.get("EU.FWD3M.EURUSD")?.v?.at(-1);
 t("CIP forwards: EUR/USD 3M and 1Y with points, USD/CAD", near(fwd, 1.1 * (1 + 0.04 * 91 / 360) / (1 + 0.019 * 91 / 360), 1e-4) && S.get("EU.FWDPTS1Y.EURUSD")?.unit === "pips" && S.has("CA.FWD3M.USDCAD"), { fwd, keys: [...S.keys()].filter((k) => k.includes("FWD")) });
 t("VIX ratios stored, levels not; VRP from SPX history", S.get("US.VIXTS")?.v?.[0] === 0.909 && S.has("US.VRP") && ![...S.values()].some((x) => x.code === "VIX"), [...S.keys()].filter((k) => k.startsWith("US.V")));
+const C = new Map((await store.list("adm_cal")).map((d) => [d.id, d.data as Record<string, any>])); // eslint-disable-line @typescript-eslint/no-explicit-any
+t("EMB spread stored from this run's Treasury curve", S.get("US.EMSPRD")?.d?.join() === "2026-10-28" && S.get("US.EMSPRD")?.v?.[0] != null && S.get("US.EMSPRD")!.v[0] > 150, S.get("US.EMSPRD"));
+t("EU carbon: EUA auctions averaged per day, aviation and cancelled skipped", S.get("EU.EUAAUC")?.d?.join() === "2026-10-27,2026-10-28" && S.get("EU.EUAAUC")?.v?.join() === "71.4,72.05" && /EEX/.test(S.get("EU.EUAAUC")?.src), S.get("EU.EUAAUC"));
+t("central-bank notices: CBN, CBK, BoG, CBE and Banxico dates, each linked to its page", ["auto-cbn-ng-2026-11-24", "auto-cbn-ke-2026-12-08", "auto-cbn-gh-2026-11-25", "auto-cbn-eg-2026-12-24", "auto-cbn-mx-2026-11-19", "auto-cbn-mx-2026-12-17"].every((id) => C.get(id)?.cat === "cb") && /centralbank\.go\.ke/.test(C.get("auto-cbn-ke-2026-12-08")?.url) && !C.has("auto-cbn-ng-2027-01-12"), [...C.keys()]);
 t("derived counts credited to their input sources", (r.sources["vix-curve"]?.series ?? 0) >= 3 && (r.sources["treasury-curve"]?.series ?? 0) >= 6, r.sources);
 
 // second run: the BoE archive is not read again; NBS keeps history; a changed release replaces its month
