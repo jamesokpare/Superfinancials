@@ -15,7 +15,7 @@ const lhIndex = docs => { const d = (docs || []).find(d => d && d.x && d.x.type 
 /** Loaded history as the `hist` documents liveBuild already understands. */
 function lhDocs() {
   const out = [];
-  for (const [id, parts] of LH.loaded) for (const [src, p] of Object.entries(parts || {})) if (p && Array.isArray(p.c) && p.t0) out.push({ id: 'h-' + id + '@' + src, lh: true, x: { type: 'hist', id, src, t0: p.t0, c: p.c, dd: Array.isArray(p.dd) ? p.dd : [] } });
+  for (const [id, parts] of LH.loaded) for (const [src, p] of Object.entries(parts || {})) if (p && Array.isArray(p.c) && p.t0) out.push({ id: 'h-' + id + '@' + src, lh: true, x: { type: 'hist', id, src, t0: p.t0, c: p.c, dd: Array.isArray(p.dd) ? p.dd : [], o: p.o, h: p.h, l: p.l, v: p.v } });
   return out;
 }
 if (typeof liveBuild === 'function') {

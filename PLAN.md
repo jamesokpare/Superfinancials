@@ -90,9 +90,10 @@ mocked responses.
   Newcastle coal, uranium, aluminium, nickel, zinc, iron ore, lithium, palm oil,
   urea, DAP, EU carbon, German power, Baltic dry, TD3C, BCOM), ISM and China PMIs.
   Some may be on paid EODHD/FMP plans; NGX rates could come from FMDQ/CBN.
-- **Volumes and intraday ranges.** Prices are real end-of-day closes; volumes,
-  open/high/low and intraday charts are simulated. EODHD/Marketstack carry
-  OHLCV and intraday bars.
+- **Volumes and daily ranges: done for priced instruments.** The market sync stores real open, high, low and
+  volume from EODHD, FMP, Marketstack and Alpha Vantage (and NGX volumes in the desk listings); the app uses
+  them instead of a range built from the previous close. FX from ExchangeRate-API, FRED series and yields stay
+  close-only. Older history gains OHLCV as instruments are backfilled again (new instruments get it at once).
 - **Economic data beyond the U.S.** Now from World Bank, BIS, ECB and OECD (annual or
   monthly). Still missing: PMIs (proprietary), central-bank meeting dates (no API; a
   yearly hand-entered list in the Data studio is the practical route), AGMs, and

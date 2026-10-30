@@ -2,10 +2,11 @@
  * Market sync: pulls end-of-day prices from the configured data providers and
  * writes them where the app's Provider layer already reads real data:
  *
- *   mkt/d-<run date>     { type: "day",  q: { <id>: [close, change, obsDate, src, note?] } }
+ *   mkt/d-<run date>     { type: "day",  q: { <id>: [close, change, obsDate, src, note|null?, [open, high, low, volume]?] } }
  *   mkt/_meta            { type: "meta", checked, n, note }                   last-run summary
  *   mkt/_hist            { type: "histidx", ids: { <id>: <last date> } }     which instruments have history
- *   mkthist/<id>         { type: "hist", id, parts: { <src>: { t0, c, dd, checked } } }   daily history
+ *   mkthist/<id>         { type: "hist", id, parts: { <src>: { t0, c, dd, o?, h?, l?, v?, checked } } }   daily history
+ *                        (o/h/l/v: open, high, low, volume, parallel to c, null where the provider had none)
  *
  * Browsers load `mkt` (small) up front and an instrument's `mkthist` doc only
  * when its series is first needed. History docs from earlier versions
@@ -24,7 +25,7 @@ import { scrub } from "@/lib/providers";
 import { INSTRUMENT_SOURCES, NGX_SOURCES, SOURCE_LABELS, dxy, type ProviderId, type Source } from "./instruments";
 import {
   africanSources, alphaVantageLatest, eodhdHistory, eodhdLatest, exchangeRateLatest, fmpHistory, fmpLatest,
-  fredSeries, marketstackHistory, marketstackLatest, type AfricanRow, type Obs, type Point,
+  fredSeries, marketstackHistory, marketstackLatest, type AfricanRow, type Bar, type Obs, type Point,
 } from "./sources";
 import { openStore, type Doc, type DocStore } from "./store";
 
@@ -85,21 +86,34 @@ function lagosTradingDay(now: Date) {
 }
 
 // --- history doc encoding (same as the app's `hist` docs) ---------------------------
+const BAR = ["o", "h", "l", "v"] as const;
 export function decodeHist(x: Record<string, unknown>): Point[] {
   const c = Array.isArray(x.c) ? x.c : []; const dd = Array.isArray(x.dd) ? x.dd : []; let t = Date.parse(String(x.t0));
   if (!Number.isFinite(t)) return [];
-  return c.flatMap((v, i) => { if (i) t += (Number(dd[i - 1]) || 1) * DAY; const n = Number(v); return Number.isFinite(n) ? [{ t: iso(t), c: n }] : []; });
+  const cols = BAR.map((k) => (Array.isArray(x[k]) ? (x[k] as unknown[]) : null));
+  return c.flatMap((v, i) => {
+    if (i) t += (Number(dd[i - 1]) || 1) * DAY; const n = Number(v); if (!Number.isFinite(n)) return [];
+    const p: Point = { t: iso(t), c: n };
+    BAR.forEach((k, j) => { const a = cols[j]; if (a && a[i] !== null && a[i] !== undefined && Number.isFinite(Number(a[i]))) p[k] = Number(a[i]); });
+    return [p];
+  });
 }
 export function encodeHist(id: string, src: string, points: Point[], checked: string) {
   const ts = points.map((p) => Date.parse(p.t));
-  return { type: "hist", id, src, checked, t0: points[0].t, c: points.map((p) => round(p.c)), dd: ts.slice(1).map((t, i) => Math.round((t - ts[i]) / DAY)) };
+  const doc: Record<string, unknown> = { type: "hist", id, src, checked, t0: points[0].t, c: points.map((p) => round(p.c)), dd: ts.slice(1).map((t, i) => Math.round((t - ts[i]) / DAY)) };
+  // Open, high, low and volume only when the provider gave some, so close-only series stay as small as before.
+  for (const k of BAR) if (points.some((p) => p[k] !== null && p[k] !== undefined)) doc[k] = points.map((p) => (p[k] === null || p[k] === undefined ? null : k === "v" ? Math.round(p[k]!) : round(p[k]!)));
+  return doc;
 }
-/** Merges point lists (later lists win on the same date), sorts, and keeps the last `days`. */
+/** Merges point lists (later lists win on the same date, field by field), sorts, and keeps the last `days`. */
 function mergePoints(days: number, now: number, ...lists: Point[][]) {
-  const m = new Map<string, number>(); for (const l of lists) for (const p of l) m.set(p.t, p.c);
+  const m = new Map<string, Point>();
+  for (const l of lists) for (const p of l) { const def = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== null && v !== undefined)) as Point; m.set(p.t, { ...m.get(p.t), ...def }); }
   const from = iso(now - days * DAY);
-  return [...m].filter(([t]) => t >= from).sort(([a], [b]) => (a < b ? -1 : 1)).map(([t, c]) => ({ t, c }));
+  return [...m.values()].filter((p) => p.t >= from).sort((a, b) => (a.t < b.t ? -1 : 1));
 }
+/** A day-doc row's [open, high, low, volume] (sixth item), or nothing. */
+const rowBar = (r: unknown[]): Partial<Bar> => { const b = r[5]; if (!Array.isArray(b)) return {}; const n = (v: unknown) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v)); return { o: n(b[0]), h: n(b[1]), l: n(b[2]), v: n(b[3]) }; };
 
 export async function runMarketSync(opts: SyncOptions = {}): Promise<SyncReport> {
   const now = opts.now ?? new Date(); const nowMs = now.getTime(); const checked = now.toISOString(); const runDay = iso(nowMs);
@@ -210,7 +224,12 @@ export async function runMarketSync(opts: SyncOptions = {}): Promise<SyncReport>
   // --- 5. today's day doc --------------------------------------------------------------
   const dayId = `d-${runDay}`; const prev = (mkt.get(dayId) ?? {}) as { q?: Record<string, unknown> };
   const q: Record<string, unknown[]> = { ...(prev.q as Record<string, unknown[]> | undefined) };
-  for (const h of hits.values()) { const r: unknown[] = [round(h.obs.c), h.obs.ch === null ? null : round(h.obs.ch), h.obs.t, h.p]; if (h.note) r.push(h.note); q[h.id] = r; }
+  for (const h of hits.values()) {
+    const r: unknown[] = [round(h.obs.c), h.obs.ch === null ? null : round(h.obs.ch), h.obs.t, h.p]; const x = h.obs.x;
+    if (h.note || x) r.push(h.note ?? null);
+    if (x) r.push([x.o === null ? null : round(x.o), x.h === null ? null : round(x.h), x.l === null ? null : round(x.l), x.v === null ? null : Math.round(x.v)]);
+    q[h.id] = r;
+  }
 
   // --- 6. fold old day docs into history docs ------------------------------------------
   const cutoff = iso(nowMs - keepDayDocs * DAY); const compacted: string[] = []; const folded = new Map<string, Point[]>();
@@ -219,7 +238,7 @@ export async function runMarketSync(opts: SyncOptions = {}): Promise<SyncReport>
     for (const [k, r] of Object.entries(((x as { q?: Record<string, unknown> }).q ?? {}) as Record<string, unknown[]>)) {
       if (!Array.isArray(r)) continue; const c = Number(r[0]); const t = String(r[2] ?? m[1]).slice(0, 10); const s = String(r[3] ?? "web");
       if (!Number.isFinite(c) || !/^\d{4}-\d{2}-\d{2}$/.test(t)) continue;
-      const key = histId(k, s); if (!folded.has(key)) folded.set(key, []); folded.get(key)!.push({ t, c });
+      const key = histId(k, s); if (!folded.has(key)) folded.set(key, []); folded.get(key)!.push({ t, c, ...rowBar(r) });
     }
     compacted.push(id);
   }
@@ -245,9 +264,11 @@ export async function runMarketSync(opts: SyncOptions = {}): Promise<SyncReport>
       const fields = (Array.isArray(x.arr) ? x.arr : ["d", "c"]) as string[];
       const ps = (parts.get(d.id) ?? []).filter((p) => p.data.gen === x.gen).sort((a, b) => Number(a.data.p) - Number(b.data.p));
       const cols: Record<string, unknown[]> = Object.fromEntries(fields.map((f) => [f, [...((x[f] as unknown[]) ?? []), ...ps.flatMap((p) => (p.data[f] as unknown[]) ?? [])]]));
+      // Volume goes in the desk's own "vol" column (added, padded with nulls, the first time a provider gives one).
+      if (row.vol && !fields.includes("vol")) { fields.push("vol"); cols.vol = cols.d.map(() => null); }
       const at = (cols.d as string[]).indexOf(row.t);
-      if (at >= 0) { if (Number(cols.c[at]) === row.c) continue; cols.c[at] = row.c; }
-      else { for (const f of fields) cols[f].push(f === "d" ? row.t : f === "c" ? row.c : null); }
+      if (at >= 0) { if (Number(cols.c[at]) === row.c && (!row.vol || Number(cols.vol?.[at]) === row.vol)) continue; cols.c[at] = row.c; if (row.vol) cols.vol[at] = row.vol; }
+      else { for (const f of fields) cols[f].push(f === "d" ? row.t : f === "c" ? row.c : f === "vol" ? row.vol ?? null : null); }
       const order = (cols.d as string[]).map((_, i) => i).sort((a, b) => ((cols.d[a] as string) < (cols.d[b] as string) ? -1 : 1));
       for (const f of fields) cols[f] = order.map((i) => cols[f][i]);
       const src0 = String(x.src ?? "");
