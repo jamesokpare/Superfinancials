@@ -80,6 +80,7 @@ map to low / medium / high effort.
 | `public/legacy/earnings.js` | Reported earnings and consensus estimates in calendars, briefs and movers |
 | `src/lib/registry/`, `src/lib/ukreg/`, `src/app/api/companies/`, `src/app/api/uk-companies/`, `public/legacy/registry.js` | Company registry: data-desk entries, Companies House (UK) and GLEIF (global) |
 | `src/lib/macro/`, `src/app/api/cron/macro-sync/` | Daily sync of official macro data, calendars and SEC Form D private placements |
+| `src/lib/africa/`, `src/app/api/cron/africa-sync/`, `src/app/api/africa/country/` | African markets sync (NGX snapshot, disclosures, company news, dividends, elections) and on-demand country profiles |
 | `public/legacy/realdata.js` | Real-data mode: page adjustments (the mode itself is in `superfinancials.js`, marked "Next.js port") |
 | `supabase/migrations/` | Schema and row-level security |
 | `supabase/seed-data/` | Shared documents exported from the artifact's database |
@@ -344,6 +345,30 @@ So that nothing is empty, the scheduled syncs need to run (Vercel Cron, with the
 provider keys set); before the first market sync the public pages say that no
 real prices have loaded yet.
 
+## African markets
+
+`GET /api/cron/africa-sync` (daily 17:10 UTC, after the NGX close; `npm run africa:sync`) uses the parts of
+the four African APIs that the price and fundamentals syncs don't. Disclosures, news and events are written
+as data-desk documents (`gen: 'africa-sync'`), so they appear with their source wherever desk content does,
+and documents you entered yourself are never changed.
+
+| Source | Key | What it adds | Where it shows |
+|---|---|---|---|
+| NGX Pulse, else Mansa | `NGX_PULSE_API_KEY` / `MANSA_API_KEY` | NGX All-Share, market cap, volume, value, deals, breadth, session status | Movers › Nigerian Exchange (`afr/ngx`) |
+| Mansa, else the full NGX list | `MANSA_API_KEY` | Top gainers and decliners; most active by volume | Movers |
+| Mansa | `MANSA_API_KEY` | Pan-African movers, NGX ETFs | Movers |
+| NGX Pulse | `NGX_PULSE_API_KEY` | NASD OTC securities | Movers |
+| MyStocks Africa | `MYSTOCKS_AFRICA_API_KEY` | Market intelligence (commentary, sector moves) | Movers |
+| NGX Pulse, Mansa | either | NGX corporate disclosures, last 90 days, linked to the listing | Market news, Country data, security pages (`adm_news/auto-ngxd-*`) |
+| MyStocks Africa | `MYSTOCKS_AFRICA_API_KEY` | Company news for NGX listings, 10 listings a run in rotation (`AFRICA_NEWS_BUDGET`) | Market news, security pages (`adm_news/auto-msn-*`) |
+| Mansa | `MANSA_API_KEY` | NGX dividends: qualification and payment dates, 15 listings a run in rotation (`AFRICA_DIV_BUDGET`) | Calendar (`adm_cal/auto-ngxdiv-*`) |
+| Africa API | `AFRICA_API_KEY` | Upcoming elections in African countries | Calendar, Country data (`adm_cal/auto-elec-*`) |
+
+Country data also shows a profile, trade overview and upcoming elections for African countries, read live
+from Africa API through `GET /api/africa/country/<CC>` (signed-in users; cached for six hours).
+The responses of these APIs are not all documented, so fields are found by their common names; check
+the first dry run (`npm run africa:sync -- --dry-run`, or the "Data dry run" workflow) against real responses.
+
 ## Macro data, calendars and private placements
 
 `GET /api/cron/macro-sync` (daily 05:20 UTC; the official rate feeds and CFTC run separately at
@@ -427,4 +452,5 @@ set); the dry run also uses the provider secrets.
 | `npm run news:sync` | Pull recent headlines from the news providers (`-- --dry-run` to preview) |
 | `npm run fundamentals:sync` | Refresh reported financials (`-- --dry-run`, `-- --budget=64`) |
 | `npm run macro:sync` | Pull macro data, official rates, calendars and Form D filings (`-- --dry-run`, `-- --only=bis,ecb`, `-- --group=rates`) |
+| `npm run africa:sync` | Pull the NGX snapshot, disclosures, company news, dividends and elections (`-- --dry-run`, `-- --only=disclosures,elections`) |
 | `npm run sync:health` | Check that each sync ran recently and produced data (exit 1 if not) |

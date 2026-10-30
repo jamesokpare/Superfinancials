@@ -9,12 +9,13 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "seed": "node scripts/seed.mjs",
-    "test": "node tests/rls.test.mjs && tsx tests/db-shim.test.ts && tsx --conditions=react-server tests/providers.test.mts && tsx --conditions=react-server tests/market-sync.test.mts && tsx --conditions=react-server tests/news-sync.test.mts && tsx --conditions=react-server tests/fundamentals-sync.test.mts && tsx --conditions=react-server tests/ukreg.test.mts && tsx --conditions=react-server tests/registry.test.mts && tsx --conditions=react-server tests/macro-sync.test.mts && tsx --conditions=react-server tests/sync-health.test.mts",
+    "test": "node tests/rls.test.mjs && tsx tests/db-shim.test.ts && tsx --conditions=react-server tests/providers.test.mts && tsx --conditions=react-server tests/market-sync.test.mts && tsx --conditions=react-server tests/news-sync.test.mts && tsx --conditions=react-server tests/fundamentals-sync.test.mts && tsx --conditions=react-server tests/ukreg.test.mts && tsx --conditions=react-server tests/registry.test.mts && tsx --conditions=react-server tests/macro-sync.test.mts && tsx --conditions=react-server tests/sync-health.test.mts && tsx --conditions=react-server tests/africa-sync.test.mts",
     "providers:check": "tsx --conditions=react-server scripts/check-providers.mts",
     "market:sync": "tsx --conditions=react-server scripts/market-sync.mts",
     "news:sync": "tsx --conditions=react-server scripts/news-sync.mts",
     "fundamentals:sync": "tsx --conditions=react-server scripts/fundamentals-sync.mts",
     "macro:sync": "tsx --conditions=react-server scripts/macro-sync.mts",
+    "africa:sync": "tsx --conditions=react-server scripts/africa-sync.mts",
     "sync:health": "tsx --conditions=react-server scripts/sync-health.mts"
   },
   "dependencies": {
