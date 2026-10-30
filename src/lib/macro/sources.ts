@@ -295,7 +295,9 @@ export async function ipoCalendar(now: Date): Promise<CalEvent[]> {
 
 // --- commodity prices for instruments without a market-data source -------------------------------
 /** A price series for an existing app instrument (written as a data-desk instrument doc, adm_inst/<id>). */
-export type InstSeries = { id: string; points: Point[]; src: string; note: string };
+export type InstSeries = { id: string; points: Point[]; src: string; note: string;
+  /** For an instrument the app doesn't have yet: created as a data-desk instrument with this description. */
+  meta?: { type: string; tk: string; name: string; exch: string; country: string; ccy: string; sector: string; industry: string } };
 
 /**
  * World Bank Commodity Price Data (the "Pink Sheet"), monthly averages. CC BY 4.0.
@@ -581,5 +583,36 @@ export async function fredSeriesList(specs: FredSpec2[] = FRED_SERIES, now = new
     } catch (e) { errors.push(`${s.id}: ${(e as Error).message}`); }
   }
   if (errors.length === specs.length) throw new ProviderError("FRED", errors[0]);
+  return out;
+}
+
+// --- Market proxies for licensed benchmarks (EODHD end-of-day prices) ------------------------------
+/**
+ * Exchange-traded funds that track a benchmark the app can't show without a licence. Each becomes a
+ * data-desk instrument named as a proxy, with a note saying what it is and who owns the real benchmark.
+ */
+export const PROXIES: { id: string; sym: string; tk: string; name: string; exch: string; of: string; owner: string }[] = [
+  { id: "AD.PX.SRUUF", sym: "SRUUF.US", tk: "SRUUF", name: "Sprott Physical Uranium Trust (uranium proxy)", exch: "OTC (TSX: U.UN)", of: "the U3O8 spot price", owner: "UxC and TradeTech (licensed)" },
+  { id: "AD.PX.URNM", sym: "URNM.US", tk: "URNM", name: "Sprott Uranium Miners ETF (uranium proxy)", exch: "NYSE Arca", of: "uranium prices, through uranium miners", owner: "UxC and TradeTech (licensed)" },
+  { id: "AD.PX.LIT", sym: "LIT.US", tk: "LIT", name: "Global X Lithium & Battery Tech ETF (lithium proxy)", exch: "NYSE Arca", of: "lithium prices, through lithium and battery equities", owner: "Fastmarkets, Benchmark, SMM (licensed)" },
+  { id: "AD.PX.KRBN", sym: "KRBN.US", tk: "KRBN", name: "KraneShares Global Carbon ETF (carbon proxy)", exch: "NYSE Arca", of: "carbon allowance prices (EUA, CCA, UKA, RGGI futures)", owner: "ICE and EEX (licensed)" },
+  { id: "AD.PX.BDRY", sym: "BDRY.US", tk: "BDRY", name: "Breakwave Dry Bulk Shipping ETF (dry-bulk freight proxy)", exch: "NYSE Arca", of: "the Baltic Dry Index, through dry-bulk freight futures", owner: "the Baltic Exchange (licensed)" },
+  { id: "AD.PX.BWET", sym: "BWET.US", tk: "BWET", name: "Breakwave Tanker Shipping ETF (TD3C proxy)", exch: "NYSE Arca", of: "the TD3C VLCC tanker rate, through tanker freight futures", owner: "the Baltic Exchange (licensed)" },
+  { id: "AD.PX.DJP", sym: "DJP.US", tk: "DJP", name: "iPath Bloomberg Commodity Index ETN (BCOM proxy)", exch: "NYSE Arca", of: "the Bloomberg Commodity Index (total return)", owner: "Bloomberg (licensed)" },
+  { id: "AD.PX.GSG", sym: "GSG.US", tk: "GSG", name: "iShares S&P GSCI Commodity-Indexed Trust (S&P GSCI proxy)", exch: "NYSE Arca", of: "the S&P GSCI", owner: "S&P Dow Jones Indices (licensed)" },
+];
+type EodRow = { date?: string; close?: unknown; adjusted_close?: unknown };
+/** About 18 months of daily closes for each proxy. One failing symbol loses only that one. */
+export async function proxyPrices(now: Date): Promise<InstSeries[]> {
+  const from = dayAdd(now, -550); const out: InstSeries[] = []; const errors: string[] = [];
+  for (const p of PROXIES) {
+    try {
+      const rows = await eod<EodRow[]>(`/eod/${p.sym}`, { from, period: "d", order: "a" });
+      const points = (Array.isArray(rows) ? rows : []).flatMap((r) => { const v = Number(r.adjusted_close ?? r.close); return r.date && Number.isFinite(v) && v > 0 ? [{ t: String(r.date).slice(0, 10), v }] : []; });
+      if (points.length) out.push({ id: p.id, points, src: `EODHD end-of-day prices (${p.sym})`, note: `Proxy, not the benchmark: the price of ${p.tk}, an exchange-traded product that tracks ${p.of}. The benchmark itself belongs to ${p.owner}.`,
+        meta: { type: "etf", tk: p.tk, name: p.name, exch: p.exch, country: "US", ccy: "USD", sector: "Commodity proxies", industry: "Exchange-traded product" } });
+    } catch (e) { errors.push(`${p.sym}: ${(e as Error).message}`); }
+  }
+  if (errors.length === PROXIES.length) throw new ProviderError("EODHD", errors[0]);
   return out;
 }
