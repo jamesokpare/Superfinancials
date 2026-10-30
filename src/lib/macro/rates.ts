@@ -31,7 +31,9 @@ const num = (s: unknown) => { const t = String(s ?? "").trim(); const v = Number
 // --- U.S. Treasury par yield curve ----------------------------------------------------------------------
 /** Column of the Treasury CSV → app instrument. */
 export const UST_COLS: Record<string, string> = { "3 Mo": "YD.US3M", "1 Yr": "YD.US1Y", "2 Yr": "YD.US2", "5 Yr": "YD.US5", "10 Yr": "YD.US10", "30 Yr": "YD.US30" };
-export async function treasuryCurve(now: Date, years = 2): Promise<InstSeries[]> {
+/** Bill maturities kept (not stored) for the bill-implied policy path. */
+const BILL_COLS: Record<string, "m1" | "m3" | "m6" | "y1"> = { "1 Mo": "m1", "3 Mo": "m3", "6 Mo": "m6", "1 Yr": "y1" };
+export async function treasuryCurve(now: Date, years = 2, bills?: Partial<Record<"m1" | "m3" | "m6" | "y1", Point[]>>): Promise<InstSeries[]> {
   const by = new Map<string, Point[]>(); const errs: string[] = [];
   for (let y = now.getUTCFullYear() - years + 1; y <= now.getUTCFullYear(); y++) {
     try {
@@ -40,6 +42,7 @@ export async function treasuryCurve(now: Date, years = 2): Promise<InstSeries[]>
       for (const r of rows) {
         const m = String(r.Date ?? "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if (!m) continue; const t = `${m[3]}-${m[1]}-${m[2]}`;
         for (const [col, id] of Object.entries(UST_COLS)) { const v = num(r[col]); if (v != null) (by.get(id) ?? by.set(id, []).get(id)!).push({ t, v }); }
+        if (bills) for (const [col, k] of Object.entries(BILL_COLS)) { const v = num(r[col]); if (v != null) (bills[k] ??= []).push({ t, v }); }
       }
     } catch (e) { errs.push((e as Error).message); }
   }

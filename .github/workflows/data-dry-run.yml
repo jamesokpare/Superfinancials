@@ -47,6 +47,11 @@ jobs:
       FUND_NGX_BUDGET: ${{ inputs.fundamentals_budget || '3' }}
       SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
       EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+      EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
+      OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+      SEC_FRAMES_BUDGET: "3"
+      SEC_DATASET_BUDGET: "1"
+      DMO_PDF_BUDGET: "1"
       FORMD_BUDGET: "15"
     steps:
       - uses: actions/checkout@v4
@@ -87,11 +92,20 @@ jobs:
       - name: SEC filings (dry run)
         continue-on-error: true
         run: set -o pipefail; npm run -s filings:sync -- --dry-run --only=AAPL,MSFT,JPM 2>&1 | tee filings.txt
+      - name: International filings (dry run)
+        continue-on-error: true
+        run: set -o pipefail; npm run -s filings:intl -- --dry-run 2>&1 | tee intl.txt
+      - name: SEC XBRL frames and offering data sets (dry run)
+        continue-on-error: true
+        run: set -o pipefail; npm run -s sec:sync -- --dry-run 2>&1 | tee sec.txt
+      - name: Pension fund reports (dry run)
+        continue-on-error: true
+        run: set -o pipefail; npm run -s pensions:sync -- --dry-run 2>&1 | tee pensions.txt
       - name: Summary
         if: always()
         run: |
           [ -f samples/SUMMARY.md ] && cat samples/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
-          for f in providers market news fundamentals macro africa filings; do
+          for f in providers market news fundamentals macro africa filings intl sec pensions; do
             [ -f "$f.txt" ] || continue
             { echo "## ${f^}"; echo '```'; cat "$f.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           done

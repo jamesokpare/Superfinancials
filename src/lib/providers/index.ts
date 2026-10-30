@@ -25,6 +25,7 @@ import * as mstack from "./marketstack";
 import * as mysa from "./mystocks-africa";
 import * as newsai from "./newsapi-ai";
 import * as ngx from "./ngx-pulse";
+import * as filingApis from "./filings-apis";
 
 export { ProviderError, MissingKeyError } from "./http";
 export { createAfricaApi } from "./africa-api";
@@ -62,6 +63,7 @@ export const CONNECTIONS: Connection[] = [
   { id: "companies-house", uses: "UK company register, officers", name: "Companies House", env: ch.ENV, kind: "company registry", docs: "https://developer-specs.company-information.service.gov.uk/", ping: () => ch.createCompaniesHouse().ping() },
   { id: "currents", uses: "Market news", name: "Currents API", env: currents.ENV, kind: "news", docs: "https://currentsapi.services/en/docs/", ping: () => currents.createCurrents().ping() },
   { id: "database", uses: "App database", name: "Postgres (DATABASE_URL)", env: db.ENV, kind: "database", docs: "https://github.com/porsager/postgres", ping: db.ping },
+  { id: "edinet", uses: "Japanese company filings (securities reports)", name: "EDINET (Japan FSA)", env: filingApis.EDINET_ENV, kind: "company registry", docs: "https://disclosure2dl.edinet-fsa.go.jp/guide/static/disclosure/WZEK0110.html", ping: filingApis.pingEdinet },
   { id: "eodhd", uses: "Prices, intraday bars, fundamentals, earnings, dividends, splits, IPOs, news", name: "EODHD", env: eodhd.ENV, kind: "market data", docs: "https://eodhd.com/financial-apis/", ping: () => eodhd.createEodhd().ping() },
   { id: "exchangerate", uses: "FX reference rates", name: "ExchangeRate-API", env: fx.ENV, kind: "fx", docs: "https://www.exchangerate-api.com/docs/overview", ping: () => fx.createExchangeRate().ping() },
   { id: "fmp", uses: "Prices, fundamentals, earnings, economic, dividend and IPO calendars", name: "Financial Modeling Prep", env: fmp.ENV, kind: "market data", docs: "https://site.financialmodelingprep.com/developer/docs", ping: () => fmp.createFmp().ping() },
@@ -69,6 +71,7 @@ export const CONNECTIONS: Connection[] = [
   { id: "mansa", uses: "NGX prices, movers, ETFs, dividends, disclosures", name: "Mansa API", env: mansa.ENV, kind: "market data", docs: "https://mansaapi.com/docs", ping: () => mansa.createMansa().ping() },
   { id: "marketaux", uses: "Market news with tickers and sentiment", name: "Marketaux", env: maux.ENV, kind: "news", docs: "https://www.marketaux.com/documentation", ping: () => maux.createMarketaux().ping() },
   { id: "marketstack", uses: "End-of-day prices", name: "Marketstack", env: mstack.ENV, kind: "market data", docs: "https://marketstack.com/documentation_v2", ping: () => mstack.createMarketstack().ping() },
+  { id: "opendart", uses: "Korean company filings (DART)", name: "OpenDART (Korea FSS)", env: filingApis.OPENDART_ENV, kind: "company registry", docs: "https://opendart.fss.or.kr/intro/main.do", ping: filingApis.pingOpenDart },
   { id: "mystocks-africa", uses: "NGX prices, company news, market intelligence", name: "MyStocks Africa", env: mysa.ENV, kind: "market data", docs: "https://mystocks.africa/partners/docs/market-data", ping: () => mysa.createMyStocksAfrica().ping() },
   { id: "newsapi-ai", uses: "Business and African market news", name: "NewsAPI.ai", env: newsai.ENV, kind: "news", docs: "https://newsapi.ai/documentation", ping: () => newsai.createNewsApiAi().ping() },
   { id: "ngx-pulse", uses: "NGX prices, market summary, disclosures, NASD OTC", name: "NGX Pulse", env: ngx.ENV, kind: "market data", docs: "https://ngxpulse.ng/api", ping: () => ngx.createNgxPulse().ping() },

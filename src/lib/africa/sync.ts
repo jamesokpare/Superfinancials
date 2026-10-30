@@ -10,6 +10,10 @@
  *   adm_news/auto-msn-<h>    company news for NGX listings (MyStocks Africa)
  *   adm_cal/auto-ngxdiv-…    NGX dividends: qualification and payment dates (Mansa)
  *   adm_cal/auto-elec-…      upcoming elections in African countries (Africa API)
+ *   adm_series/NG.<code>     Nigerian money-market rates (Central Bank of Nigeria: interbank call, OBB,
+ *                            NIBOR, MPR, T-bill rates) and FGN bond auction marginal rates by tenor
+ *                            (Debt Management Office Nigeria), in the data desk's series format
+ *   adm_cal/auto-dmo-<date>  FGN bond auction results (offered, subscribed, allotted, marginal rates)
  *   afr/_meta                last-run summary { checked, n, note, sources, state }
  *
  * News and events use the data desk's own format, so the app shows them on Market
@@ -27,6 +31,7 @@ import { createMyStocksAfrica } from "@/lib/providers/mystocks-africa";
 import { createNgxPulse } from "@/lib/providers/ngx-pulse";
 import { findNumber } from "@/lib/market/sources";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
+import { auctionEvent, auctionSeries, cbnMoneyMarket, dmoAuctions, type NgSeries } from "./ngdebt";
 import { africanCode, africanName, allRows, firstRows, hash, httpUrl, isoDate, nameOf, number, readMovers, slug, text, type Mover, type Obj } from "./read";
 
 export const GEN = "africa-sync";
@@ -37,11 +42,13 @@ const intEnv = (k: string, d: number) => { const n = Number(process.env[k]); ret
 const errText = (e: unknown) => scrub(String((e as Error)?.message ?? e)).slice(0, 300);
 const soft = <T>(p: Promise<T>) => p.catch(() => null);
 
-export type AfricaSourceId = "ngx-market" | "ngx-movers" | "pan-african" | "etfs" | "nasd" | "intel" | "disclosures" | "company-news" | "dividends" | "elections";
+export type AfricaSourceId = "ngx-market" | "ngx-movers" | "pan-african" | "etfs" | "nasd" | "intel" | "disclosures" | "company-news" | "dividends" | "elections" | "cbn-money" | "dmo-auctions";
 const NEEDS: Record<AfricaSourceId, string[]> = {
   "ngx-market": ["NGX_PULSE_API_KEY", "MANSA_API_KEY"], "ngx-movers": ["MANSA_API_KEY", "NGX_PULSE_API_KEY", "MYSTOCKS_AFRICA_API_KEY"],
   "pan-african": ["MANSA_API_KEY"], etfs: ["MANSA_API_KEY"], nasd: ["NGX_PULSE_API_KEY"], intel: ["MYSTOCKS_AFRICA_API_KEY"],
   disclosures: ["NGX_PULSE_API_KEY", "MANSA_API_KEY"], "company-news": ["MYSTOCKS_AFRICA_API_KEY"], dividends: ["MANSA_API_KEY"], elections: ["AFRICA_API_KEY"],
+  // Official publishers, no key needed.
+  "cbn-money": [], "dmo-auctions": [],
 };
 const has = (k: string) => !!envKey(k);
 
@@ -60,6 +67,7 @@ export type AfricaReport = {
   snapshot: { sections: string[] };
   news: { written: number; removed: number };
   events: { written: number; removed: number };
+  series: { written: number; kept: string[] };
   note: string;
 };
 
@@ -182,12 +190,12 @@ export function readElection(r: Obj, today: string, until: string, upd: string):
 }
 
 // --- the run -------------------------------------------------------------------------
-export async function runAfricaSync(opts: { store?: DocStore; dryRun?: boolean; now?: Date; only?: AfricaSourceId[]; newsBudget?: number; divBudget?: number } = {}): Promise<AfricaReport> {
+export async function runAfricaSync(opts: { store?: DocStore; dryRun?: boolean; now?: Date; only?: AfricaSourceId[]; newsBudget?: number; divBudget?: number; dmoBudget?: number; pdfText?: (b: Buffer) => Promise<string> } = {}): Promise<AfricaReport> {
   const now = opts.now ?? new Date(); const nowMs = now.getTime(); const upd = now.toISOString(); const today = isoDay(nowMs);
   const store = opts.store ?? openStore();
-  const report: AfricaReport = { date: today, dryRun: !!opts.dryRun, store: store.kind, sources: {}, snapshot: { sections: [] }, news: { written: 0, removed: 0 }, events: { written: 0, removed: 0 }, note: "" };
+  const report: AfricaReport = { date: today, dryRun: !!opts.dryRun, store: store.kind, sources: {}, snapshot: { sections: [] }, news: { written: 0, removed: 0 }, events: { written: 0, removed: 0 }, series: { written: 0, kept: [] }, note: "" };
   const afr = await store.list(COL); const prevMeta = afr.find((d) => d.id === "_meta")?.data; const prevSnap = (afr.find((d) => d.id === "ngx")?.data ?? {}) as Partial<NgxSnapshot>;
-  const state = { ...((prevMeta?.state as Record<string, number> | undefined) ?? {}) };
+  const state: Record<string, unknown> = { ...((prevMeta?.state as Record<string, unknown> | undefined) ?? {}) };
 
   // NGX listings the app knows (data desk instruments AD.NG.<TK>), for linking news and dividends to securities.
   const listings = new Map<string, Listing>();
@@ -203,7 +211,7 @@ export async function runAfricaSync(opts: { store?: DocStore; dryRun?: boolean; 
   const want = (id: AfricaSourceId) => !opts.only || opts.only.includes(id);
   const run = async (id: AfricaSourceId, fn: () => Promise<{ n: number; src?: string }>) => {
     if (!want(id)) return;
-    if (!NEEDS[id].some(has)) { report.sources[id] = { n: 0, skipped: `${NEEDS[id].join(" or ")} not set` }; return; }
+    if (NEEDS[id].length && !NEEDS[id].some(has)) { report.sources[id] = { n: 0, skipped: `${NEEDS[id].join(" or ")} not set` }; return; }
     try { report.sources[id] = await fn(); } catch (e) { report.sources[id] = { n: 0, error: errText(e) }; }
   };
   const setSection = <K extends keyof NgxSnapshot>(k: K, v: NgxSnapshot[K], src: string) => { snap[k] = v; snap.at[k as string] = upd; snap.src[k as string] = src; report.snapshot.sections.push(k as string); };
@@ -279,7 +287,7 @@ export async function runAfricaSync(opts: { store?: DocStore; dryRun?: boolean; 
     for (const x of (f?.rows ?? []).filter((r) => r.tk).sort((a, b) => (b.val ?? b.vol ?? 0) - (a.val ?? a.vol ?? 0)).slice(0, 60)) perCo.set(x.tk, { id: "", tk: x.tk, name: x.name });
   }
   const tks = [...perCo.keys()].sort();
-  const rotate = (key: string, budget: number) => { if (!tks.length || !budget) return [] as string[]; const start = (state[key] ?? 0) % tks.length; const out = Array.from({ length: Math.min(budget, tks.length) }, (_, i) => tks[(start + i) % tks.length]); state[key] = (start + out.length) % tks.length; return out; };
+  const rotate = (key: string, budget: number) => { if (!tks.length || !budget) return [] as string[]; const start = (Number(state[key]) || 0) % tks.length; const out = Array.from({ length: Math.min(budget, tks.length) }, (_, i) => tks[(start + i) % tks.length]); state[key] = (start + out.length) % tks.length; return out; };
 
   await run("company-news", async () => {
     const batch = rotate("newsCursor", opts.newsBudget ?? intEnv("AFRICA_NEWS_BUDGET", 10)); if (!batch.length) return { n: 0, src: "no NGX listings found" };
@@ -307,6 +315,18 @@ export async function runAfricaSync(opts: { store?: DocStore; dryRun?: boolean; 
     electionsAnswered = true; return { n, src: "Africa API" };
   });
 
+  // Nigerian money-market rates and FGN bond auctions (official publishers).
+  const ngSeries: NgSeries[] = [];
+  await run("cbn-money", async () => { const s = await cbnMoneyMarket(now); ngSeries.push(...s); return { n: s.length, src: "Central Bank of Nigeria" }; });
+  await run("dmo-auctions", async () => {
+    const done = new Set(Array.isArray(state.dmoDone) ? (state.dmoDone as string[]) : []);
+    const r = await dmoAuctions(done, opts.dmoBudget ?? intEnv("DMO_PDF_BUDGET", 3), opts.pdfText);
+    for (const a of r.auctions) events.push(auctionEvent(a, upd, GEN));
+    ngSeries.push(...auctionSeries(r.auctions));
+    state.dmoDone = [...done, ...r.tried].slice(-80);
+    return { n: r.auctions.length, src: `Debt Management Office Nigeria, ${r.tried.length} new of ${r.listed} listed` };
+  });
+
   // --- write: news and events (owner documents are left alone) ---
   const admNews = new Map((await store.list("adm_news")).map((d) => [d.id, d.data]));
   const newsWrites: Doc[] = news.filter((x) => { const cur = admNews.get(x.id); return !cur || (cur.gen === GEN && (cur.title !== x.title || cur.url !== x.url || JSON.stringify(cur.ids) !== JSON.stringify(x.ids) || cur.sum !== x.sum)); })
@@ -329,16 +349,34 @@ export async function runAfricaSync(opts: { store?: DocStore; dryRun?: boolean; 
   }).map(([id]) => id);
   report.news = { written: newsWrites.length, removed: newsRemove.length }; report.events = { written: calWrites.length, removed: calRemove.length };
 
+  // --- write: series (new points merged into what is stored; owner series left alone) ---
+  const seriesWrites: Doc[] = [];
+  if (ngSeries.length) {
+    const admSeries = new Map((await store.list("adm_series")).map((d) => [d.id, d.data]));
+    for (const x of ngSeries) {
+      const id = `NG.${x.code}`; const cur = admSeries.get(id);
+      if (cur && cur.gen !== GEN) { report.series.kept.push(id); continue; }
+      const pts = new Map<string, number>(); const cd = Array.isArray(cur?.d) ? (cur!.d as string[]) : [], cv = Array.isArray(cur?.v) ? (cur!.v as number[]) : [];
+      cd.forEach((t, i) => { if (typeof cv[i] === "number") pts.set(t, cv[i]); });
+      for (const p of x.points) pts.set(p.t, p.v);
+      const sorted = [...pts].sort(([a], [b]) => (a < b ? -1 : 1)); const d = sorted.map(([t]) => t), v = sorted.map(([, val]) => val);
+      if (cur && JSON.stringify(cur.d) === JSON.stringify(d) && JSON.stringify(cur.v) === JSON.stringify(v)) continue;
+      seriesWrites.push({ id, data: { kind: "eco", cc: "NG", code: x.code, name: x.name, unit: x.unit, cat: x.cat, freq: x.freq, mi: "", src: x.src, url: x.url, notes: x.notes, arr: ["d", "v"], d, v, n: d.length, parts: 1, gen: GEN, upd } });
+    }
+  }
+  report.series.written = seriesWrites.length;
+
   const ok = Object.values(report.sources).filter((s) => !s.error && !s.skipped); const failed = Object.entries(report.sources).filter(([, s]) => s.error).map(([k]) => k);
-  const disc = report.sources.disclosures?.n ?? 0, cn = report.sources["company-news"]?.n ?? 0, div = report.sources.dividends?.n ?? 0, el = report.sources.elections?.n ?? 0;
-  report.note = `African markets sync ${today}: ${ok.length} of ${Object.keys(report.sources).length} sources answered; NGX snapshot ${report.snapshot.sections.length ? `(${report.snapshot.sections.join(", ")})` : "unchanged"}; ${disc} disclosures, ${cn} company news items, ${div} dividend dates, ${el} elections; ${newsWrites.length} news and ${calWrites.length} events written.${failed.length ? ` Failed: ${failed.join(", ")}.` : ""}`;
-  const n = report.snapshot.sections.length + disc + cn + div + el;
+  const disc = report.sources.disclosures?.n ?? 0, cn = report.sources["company-news"]?.n ?? 0, div = report.sources.dividends?.n ?? 0, el = report.sources.elections?.n ?? 0, auc = report.sources["dmo-auctions"]?.n ?? 0;
+  report.note = `African markets sync ${today}: ${ok.length} of ${Object.keys(report.sources).length} sources answered; NGX snapshot ${report.snapshot.sections.length ? `(${report.snapshot.sections.join(", ")})` : "unchanged"}; ${disc} disclosures, ${cn} company news items, ${div} dividend dates, ${el} elections, ${auc} bond auctions; ${newsWrites.length} news, ${calWrites.length} events and ${seriesWrites.length} Nigerian rate series written.${failed.length ? ` Failed: ${failed.join(", ")}.` : ""}`;
+  const n = report.snapshot.sections.length + disc + cn + div + el + auc + (report.sources["cbn-money"]?.n ?? 0);
   if (!opts.dryRun) {
     if (report.snapshot.sections.length) await store.upsert(COL, [{ id: "ngx", data: snap as unknown as Record<string, unknown> }]);
     if (newsWrites.length) await store.upsert("adm_news", newsWrites);
     if (newsRemove.length) await store.remove("adm_news", newsRemove);
     if (calWrites.length) await store.upsert("adm_cal", calWrites);
     if (calRemove.length) await store.remove("adm_cal", calRemove);
+    if (seriesWrites.length) await store.upsert("adm_series", seriesWrites);
     await store.upsert(COL, [{ id: "_meta", data: { type: "meta", checked: upd, n, note: report.note, sources: report.sources, state } }]);
   }
   return report;

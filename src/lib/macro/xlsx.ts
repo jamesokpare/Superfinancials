@@ -9,7 +9,7 @@
  */
 import { inflateRawSync } from "node:zlib";
 
-function unzip(buf: Buffer): Map<string, Buffer> {
+export function unzip(buf: Buffer): Map<string, Buffer> {
   // End of central directory record: signature 0x06054b50, within the last 64 KB.
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
@@ -77,9 +77,14 @@ export function writeXlsx(sheets: Record<string, (string | number)[][]>): Buffer
   files.push(["xl/sharedStrings.xml", `<sst>${strs.map((s) => `<si><t>${esc(s)}</t></si>`).join("")}</sst>`]);
   files.push(["xl/workbook.xml", `<workbook><sheets>${names.map((n, k) => `<sheet name="${esc(n)}" sheetId="${k + 1}" r:id="rId${k + 1}"/>`).join("")}</sheets></workbook>`]);
   files.push(["xl/_rels/workbook.xml.rels", `<Relationships>${names.map((_, k) => `<Relationship Id="rId${k + 1}" Target="worksheets/sheet${k + 1}.xml"/>`).join("")}</Relationships>`]);
+  return writeZip(files);
+}
+
+/** A stored (uncompressed) zip archive: used by tests to fake official downloads. */
+export function writeZip(files: [string, string | Buffer][]): Buffer {
   const parts: Buffer[] = []; const central: Buffer[] = []; let off = 0;
   for (const [name, body] of files) {
-    const nb = Buffer.from(name), data = Buffer.from(body);
+    const nb = Buffer.from(name), data = Buffer.isBuffer(body) ? body : Buffer.from(body);
     const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(data.length, 22); lh.writeUInt16LE(nb.length, 26);
     const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(data.length, 24); ch.writeUInt16LE(nb.length, 28); ch.writeUInt32LE(off, 42);
     parts.push(lh, nb, data); central.push(ch, nb); off += 30 + nb.length + data.length;

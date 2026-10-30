@@ -10,19 +10,22 @@ import type { DocStore } from "@/lib/market/store";
 export type HealthRow = { sync: string; ok: boolean; checked: string | null; ageHours: number | null; detail: string };
 
 /** Max age per sync: prices run on weekdays (a Monday check sees Friday's run), news twice a day, fundamentals daily. */
-export const LIMITS: { sync: string; col: string; maxHours: number; count: (m: Record<string, unknown>) => number }[] = [
+export const LIMITS: { sync: string; col: string; doc?: string; maxHours: number; count: (m: Record<string, unknown>) => number }[] = [
   { sync: "Market prices", col: "mkt", maxHours: 80, count: (m) => Number(m.resolved ?? m.n ?? 0) },
   { sync: "News", col: "mktnews", maxHours: 26, count: (m) => Number(m.n ?? 0) },
   { sync: "Fundamentals", col: "fund", maxHours: 26, count: (m) => Number(m.n ?? 0) },
   { sync: "Macro data", col: "macrosync", maxHours: 50, count: (m) => Number(m.n ?? 0) },
   { sync: "African markets", col: "afr", maxHours: 50, count: (m) => Number(m.n ?? 0) },
   { sync: "SEC filings", col: "filings", maxHours: 50, count: (m) => Number(m.n ?? 0) },
+  { sync: "International filings", col: "filings", doc: "_intl", maxHours: 50, count: (m) => Number(m.n ?? 0) },
+  { sync: "SEC XBRL frames and offering data sets", col: "secsync", maxHours: 50, count: (m) => Number(m.n ?? 0) },
+  { sync: "Public pension fund reports", col: "pensionsync", maxHours: 240, count: (m) => Number(m.n ?? 0) },
 ];
 
 export async function checkSyncHealth(store: DocStore, now = new Date()): Promise<HealthRow[]> {
-  return Promise.all(LIMITS.map(async ({ sync, col, maxHours, count }) => {
-    const meta = (await store.list(col)).find((d) => d.id === "_meta")?.data;
-    if (!meta) return { sync, ok: false, checked: null, ageHours: null, detail: "has never run (no _meta doc)" };
+  return Promise.all(LIMITS.map(async ({ sync, col, doc = "_meta", maxHours, count }) => {
+    const meta = (await store.list(col)).find((d) => d.id === doc)?.data;
+    if (!meta) return { sync, ok: false, checked: null, ageHours: null, detail: `has never run (no ${doc} doc)` };
     const t = Date.parse(String(meta.checked)); const age = Number.isFinite(t) ? (now.getTime() - t) / 36e5 : null;
     const n = count(meta); const note = String(meta.note ?? "").slice(0, 300);
     if (age === null) return { sync, ok: false, checked: null, ageHours: null, detail: "last run time unreadable" };

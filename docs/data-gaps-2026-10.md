@@ -24,6 +24,18 @@ Research and build of 30 October 2026. Four research passes ran web searches. Ev
 | ISM PMI | Philadelphia Fed, Empire State (NY Fed) and Dallas Fed manufacturing surveys, labelled "not the ISM PMI" | Each Reserve Bank, via FRED |
 | Uranium, lithium, carbon, BDI, TD3C, BCOM, GSCI | Labelled proxy instruments: Sprott Physical Uranium Trust, URNM, LIT, KRBN, BDRY, BWET, DJP, GSG. Each note says it is a proxy and who owns the benchmark. | EODHD end-of-day prices (subject to the licence point above) |
 | Every UK share allotment | All SH01 filings from the Companies House stream, 60 days kept, shown on the Company registry page | Companies House, Open Government Licence v3.0. Needs a free **streaming key**, `COMPANIES_HOUSE_STREAM_KEY` |
+| Earnings beyond the 64 U.S. names | Reported EPS (diluted, else basic), revenue and shares outstanding for every U.S. filer: 8 quarters and 3 fiscal years, shown on company pages when no provider fundamentals exist | SEC EDGAR XBRL frames (data.sec.gov), public domain; credited "SEC EDGAR XBRL" with a link to EDGAR |
+| Non-U.S. filings | Japan (EDINET), Korea (OpenDART), EU and UK annual reports in ESEF (filings.xbrl.org): latest filings per country on the Country data hub, and on matched desk instruments | EDINET, Financial Services Agency (Public Data License 1.0, free key `EDINET_API_KEY`); OpenDART, Financial Supervisory Service (free key `OPENDART_API_KEY`); filings.xbrl.org, XBRL International (no key) |
+| China PMIs | Official NBS manufacturing, non-manufacturing and composite PMI, read from the English press releases; history builds month by month | National Bureau of Statistics of China |
+| Business and consumer confidence | OECD composite leading indicator, business and consumer confidence (OECD and partners); European Commission Economic Sentiment Indicator and consumer confidence by EU country and the euro area | OECD (CC BY 4.0); European Commission DG ECFIN via Eurostat (CC BY 4.0) |
+| Inflation expectations | Cleveland Fed expected inflation 1, 2, 5, 10, 30 years; Bank of England implied RPI inflation 5/10/20-year spot and 5y5y; ECB Survey of Professional Forecasters (long-term and 1–2 year HICP, long-term GDP and unemployment) | Federal Reserve Bank of Cleveland (via FRED); Bank of England yield curves; ECB SPF |
+| Market-implied rates | Bill-implied policy path: 3m-in-3m and 6m-in-6m forwards and the change priced vs EFFR, in bp | Calculated from U.S. Treasury bill yields (public domain) and the NY Fed EFFR |
+| FX forwards | EUR/USD and USD/CAD 3-month and 1-year forwards and forward points by covered interest parity | Calculated from ECB reference rate and AAA curve, Bank of Canada bills and USD/CAD, U.S. Treasury bills. Labelled CIP-implied: traded forwards also carry a cross-currency basis |
+| VIX term structure | VIX/VIX3M, VIX9D/VIX, VVIX/VIX and VIX minus 21-day realised S&P 500 volatility | Calculated from Cboe's daily history files. Only ratios and spreads are stored, not index levels; Cboe's display terms still apply to the inputs |
+| Nigerian money market and bonds | CBN interbank call, open buy back, NIBOR, MPR and T-bill rates; FGN bond auction results (offered, subscribed, allotted, marginal rate) in the calendar and as marginal-rate series | Central Bank of Nigeria money market indicators; Debt Management Office Nigeria auction result PDFs |
+| Fund performance | Fund-level net IRR, TVPI, DPI, commitment, paid-in, distributed and value as each pension reports them (CalPERS private equity and private debt, Washington State Investment Board, Oregon OPERF private equity and real assets), weekly | Public records, credited per pension and report with the as-of date. WSIB IRRs are calculated by Hamilton Lane from GP data |
+| Crowdfunding and Reg A raises | Regulation Crowdfunding (Form C) and Regulation A offerings in the "raising now" list, with portal, target, maximum and deadline | SEC quarterly data sets, public domain |
+| UK amounts raised | Amount raised per SH01 (shares × amount paid including premium), read from the filing PDF; scanned paper forms stay blank | Companies House Document API, Open Government Licence v3.0 |
 | (earlier PRs) | IMF projections, NBER recessions, SEC filings, EIA, SH01 on company records | — |
 
 ## Gap by gap
@@ -211,4 +223,11 @@ The "Data dry run" workflow's provider-samples step now also saves:
 - the copyright notes of every FRED series the app shows;
 - the head of Cboe's VIX history file.
 
-One run with the keys in GitHub secrets settles the open formats and licence labels.
+It also runs the app's own readers on one live response from each new official source (OECD leading indicators,
+Eurostat sentiment, ECB SPF, BoE implied inflation, NBS PMI releases, ECB and Bank of Canada forward inputs, Cboe
+history, EDINET, OpenDART, filings.xbrl.org, SEC frames and Reg CF / Reg A data sets, CBN, DMO, CalPERS, WSIB, Oregon)
+and saves what was read: an empty or odd result points at a format to fix. The workflow also dry-runs the
+international filings, SEC and pension syncs.
+
+One run with the keys in GitHub secrets settles the open formats and licence labels. New secrets for that run:
+`EDINET_API_KEY` and `OPENDART_API_KEY` (both free).

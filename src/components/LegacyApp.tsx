@@ -18,7 +18,7 @@ export function LegacyApp() {
     window.__sfLegacyLoaded = true;
     installClaudeShim();
     // Ordered, non-async scripts run in sequence: the add-ons extend the main script's globals.
-    for (const src of ["/legacy/superfinancials.js", "/legacy/workspace.js", "/legacy/history.js", "/legacy/news-feed.js", "/legacy/fundamentals.js", "/legacy/earnings.js", "/legacy/filings.js", "/legacy/registry.js", "/legacy/africa.js", "/legacy/connections.js", "/legacy/realdata.js"]) {
+    for (const src of ["/legacy/superfinancials.js", "/legacy/workspace.js", "/legacy/history.js", "/legacy/news-feed.js", "/legacy/fundamentals.js", "/legacy/earnings.js", "/legacy/filings.js", "/legacy/registry.js", "/legacy/pensions.js", "/legacy/africa.js", "/legacy/connections.js", "/legacy/realdata.js"]) {
       const s = document.createElement("script");
       s.src = src;
       s.async = false;

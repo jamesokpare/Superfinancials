@@ -68,7 +68,8 @@ if (typeof admBuild === 'function') { const _ab = admBuild; admBuild = function 
 if (typeof loadUser === 'function') { const _lu = loadUser; loadUser = function (...a) { const r = _lu(...a); realRename(); return r; }; }
 realRename();
 /* ---------- Fund performance › funds raising now (SEC Form D, written by the daily macro sync) ---------- */
-const RAISE_TYPES = ['All', 'Venture Capital Fund', 'Private Equity Fund', 'Hedge Fund', 'Other Investment Fund'];
+// Reg CF and Reg A offerings come from the SEC sync (src/lib/sec/sync.ts): companies raising from the public.
+const RAISE_TYPES = ['All', 'Venture Capital Fund', 'Private Equity Fund', 'Hedge Fund', 'Other Investment Fund', 'Reg CF offering', 'Reg A offering'];
 let RAISE_TYPE = 'All';
 function raiseRows() { try { return (typeof ADM !== 'undefined' ? ADM.priv : []).filter(x => x.kind === 'raise' && x.name).sort((a, b) => String(b.filed || '').localeCompare(String(a.filed || ''))); } catch (e) { return []; } }
 function raiseDraw(el) {
@@ -79,11 +80,11 @@ function raiseDraw(el) {
   el.querySelectorAll('[data-rt]').forEach(b => b.addEventListener('click', () => { RAISE_TYPE = b.dataset.rt; raiseDraw(el); }));
   table(el.querySelector('#rfT'), { dense: true, rows, csv: 'funds-raising-form-d', search: true, sort: { k: 'f', d: -1 }, text: x => x.name + ' ' + (x.people || []).join(' '), empty: '<b>No funds yet</b>The daily sync adds pooled-fund Form D filings here once SEC EDGAR is connected.',
     cols: [
-      { k: 'n', h: 'Fund', v: x => x.name, f: x => `<a href="${esc(x.url || '#')}" target="_blank" rel="noopener noreferrer">${esc(x.name)}</a> <span class="badge live desk">DESK</span>${(x.people || []).length ? `<div class="sub">${esc(x.people.slice(0, 2).join('; '))}</div>` : ''}`, csv: x => x.name },
+      { k: 'n', h: 'Fund', v: x => x.name, f: x => `<a href="${esc(x.url || '#')}" target="_blank" rel="noopener noreferrer">${esc(x.name)}</a> <span class="badge live desk">DESK</span>${(x.people || []).length ? `<div class="sub">${esc(x.people.slice(0, 2).join('; '))}</div>` : ''}${x.platform ? `<div class="sub">via ${esc(x.platform)}</div>` : ''}`, csv: x => x.name },
       { k: 't', h: 'Type', v: x => x.fundType, f: x => `<span class="badge">${esc(String(x.fundType || '').replace(' Fund', ''))}</span>` },
       { k: 'p', h: 'Location', v: x => [x.city, x.state].filter(Boolean).join(', '), f: x => `<span class="sub">${esc([x.city, x.state].filter(Boolean).join(', '))}</span>` },
       { k: 'o', h: 'Offered', a: 'r', v: x => x.offered == null ? -1 : +x.offered, f: x => amt(x.offered) },
-      { k: 's', h: 'Sold to date', a: 'r', v: x => +x.sold || 0, f: x => amt(x.sold) },
+      { k: 's', h: 'Sold to date', a: 'r', v: x => +x.sold || 0, f: x => x.sold == null || x.sold === '' ? '—' : amt(x.sold) },
       { k: 'i', h: 'Investors', a: 'r', v: x => x.investors ?? -1, f: x => x.investors == null ? '—' : nf(x.investors, 0) },
       { k: 'm', h: 'Minimum', a: 'r', v: x => +x.minInvest || 0, f: x => x.minInvest ? big(+x.minInvest, '$') : '—' },
       { k: 'f', h: 'Filed', v: x => x.filed, f: x => `<span class="sub">${esc(x.filed ? fd(Date.parse(x.filed)) : '')}</span>` },
@@ -96,7 +97,7 @@ if (typeof PAGES !== 'undefined' && PAGES.funds) {
     try {
       if (!raiseRows().length && !REAL.on) return;
       const h = pg.querySelector('.phd'); if (!h) return;
-      h.insertAdjacentHTML('afterend', `<section class="panel" id="raiseP"><header class="ph"><span class="pt">Funds raising now</span><span class="pm">SEC Form D · U.S. private funds</span></header><div id="raiseB"></div></section>`);
+      h.insertAdjacentHTML('afterend', `<section class="panel" id="raiseP"><header class="ph"><span class="pt">Funds raising now</span><span class="pm">SEC Form D, Form C and Reg A · U.S. funds and companies</span></header><div id="raiseB"></div></section>`);
       raiseDraw(pg.querySelector('#raiseB'));
     } catch (e) { console.error(e); }
   };

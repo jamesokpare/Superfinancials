@@ -481,6 +481,27 @@ Hobby the job runs once a day for at most 5 minutes; Vercel Pro or a GitHub Acti
 See `docs/data-gaps-2026-10.md` for the remaining gaps, the free sources still to wire, and the paid options
 with prices and licence notes.
 
+## Surveys, expectations, foreign filings, pensions
+
+Added on top of the daily macro sync (`src/lib/macro/surveys.ts`, `src/lib/macro/derived.ts`):
+- OECD leading indicator, business and consumer confidence; EC Economic Sentiment (Eurostat); ECB SPF;
+  Cleveland Fed expected inflation (FRED); Bank of England implied inflation curve; China NBS official PMIs.
+- Calculated: bill-implied policy path vs EFFR, CIP FX forwards (EUR/USD, USD/CAD), VIX term-structure ratios
+  (ratios only, not Cboe levels).
+
+New scheduled jobs (`vercel.json`):
+
+| Job | Schedule (UTC) | Writes | Needs |
+|---|---|---|---|
+| `/api/cron/intl-filings` | daily 06:35 | `filings/latest-<CC>`, `filings/<id>`, `filings/_intl` | `EDINET_API_KEY`, `OPENDART_API_KEY` (free; each source is skipped without its key) |
+| `/api/cron/sec-sync` | daily 07:35 | `secframes/t-<letter>` (EPS, revenue, shares for every U.S. filer), `adm_priv/secc-*`, `secr-*` (Reg CF, Reg A) | `SEC_USER_AGENT` |
+| `/api/cron/pension-sync` | Mondays 04:35 | `adm_priv/lp-*` fund performance by pension | — |
+
+The africa sync now also writes CBN money-market rates and DMO bond auctions; the UK allotments job reads the
+amount raised from each SH01 PDF (`UK_SH01_PDF_BUDGET`, default 40 a run). Scripts: `npm run filings:intl`,
+`npm run sec:sync`, `npm run pensions:sync` (all take `--dry-run`). Sources, licences and credits:
+[docs/data-gaps-2026-10.md](docs/data-gaps-2026-10.md).
+
 ## CI and monitoring (GitHub Actions)
 
 | Workflow | When | What |

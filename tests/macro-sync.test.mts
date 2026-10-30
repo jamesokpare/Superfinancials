@@ -7,6 +7,7 @@ import { runMacroSync, GEN } from "../src/lib/macro/sync";
 import { fredSeriesList, parseCsv, parsePinkSheet, periodEnd, parseIcs, recessionSpans } from "../src/lib/macro/sources";
 import { readXlsx, writeXlsx } from "../src/lib/macro/xlsx";
 import { memoryStore } from "../src/lib/market/store";
+import { newSourceFetch } from "./fixtures/macro-new-sources";
 
 process.env.FRED_API_KEY = "test-fred"; process.env.FMP_API_KEY = "test-fmp"; process.env.EODHD_API_KEY = "test-eod"; process.env.EIA_API_KEY = "test-eia"; process.env.MACRO_RETRY_MS = "5"; process.env.MACRO_GAP_MS = "0";
 process.env.SEC_USER_AGENT = "Superfinancials test ops@example.com";
@@ -36,6 +37,7 @@ const PINK_XLSX = writeXlsx({ "Index": [["Contents"]], "Monthly Prices": [
 
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   const url = new URL(input instanceof Request ? input.url : String(input)); seen.push(url.hostname + url.pathname + url.search);
+  const nf = newSourceFetch(url); if (nf) return nf; // surveys and calculated series: tests/macro-surveys.test.mts
   const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "content-type": "application/json" } });
   const csv = (s: string, status = 200) => new Response(s, { status, headers: { "content-type": "text/csv" } });
   if (url.hostname === "api.worldbank.org") {
@@ -176,7 +178,7 @@ const ten = C.get("auto-ust-2026-11-10-91282CNX5");
 t("Treasury auctions: title, amount, category", ten?.title === "U.S. Treasury 10-Year Note auction (reopening)" && /US\$42\.0 bn/.test(String(ten?.notes)) && ten?.cat === "auc" && ten?.imp === 2, ten);
 t("calendar: owner events kept; stale and rescheduled auto events removed", C.has("desk-1") && !C.has("auto-ust-2026-11-03-OLD") && !C.has("auto-fred-10-2026-01-01") && r.events.removed === 2, [...C.keys()]);
 const meta = (await store.list("macrosync"))[0]?.data;
-t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total + r.funds.total && /27 of 27 sources/.test(String(meta?.note)), meta);
+t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total + r.funds.total && /34 of 34 sources/.test(String(meta?.note)), meta);
 
 const cpi = C.get("auto-eco-2026-11-12-us-cpi-yoy-oct");
 t("economic calendar: consensus, prior, time; low-importance and unknown countries dropped", cpi?.cons === "3.1" && cpi?.prior === "3" && cpi?.actual === "" && cpi?.time === "13:30" && cpi?.imp === 3 && ![...C.keys()].some((k) => /minor-survey|unknown-place/.test(k)), cpi);
@@ -270,7 +272,7 @@ t("splits: ratio, reverse splits, tracked U.S. names only, linked", sp?.title ==
 fmpDivDown = false;
 const gs = memoryStore(); await runMacroSync({ store: gs, now: NOW, group: "core", only: undefined }); const gr = await runMacroSync({ store: gs, now: NOW, group: "rates" });
 const gm = (await gs.list("macrosync"))[0]?.data as { sources?: Record<string, unknown> };
-t("cron groups: the rates run covers only rate sources; the summary keeps the core run's results", Object.keys(gr.sources).sort().join() === "boc,boe,cftc,estr,nyfed,treasury-curve" && "oecd" in (gm.sources ?? {}) && "nyfed" in (gm.sources ?? {}), Object.keys(gm.sources ?? {}));
+t("cron groups: the rates run covers only rate sources; the summary keeps the core run's results", Object.keys(gr.sources).sort().join() === "boc,boe,boe-inflation,cftc,estr,fx-forwards,nyfed,treasury-curve,vix-curve" && "oecd" in (gm.sources ?? {}) && "nyfed" in (gm.sources ?? {}), Object.keys(gm.sources ?? {}));
 const only = await runMacroSync({ store: memoryStore(), now: NOW, only: ["bis"] });
 t("--only limits the sources", Object.keys(only.sources).join() === "bis", only.sources);
 const ua = process.env.SEC_USER_AGENT; delete process.env.SEC_USER_AGENT; const nBls = blsUA.length;
