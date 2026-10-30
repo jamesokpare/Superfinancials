@@ -60,9 +60,10 @@ export async function companyDetail(number: string) {
   return cached(`c:${number}`, async () => {
     const ch = createCompaniesHouse();
     const soft = <T>(p: Promise<T>) => p.catch(() => null);
-    const [p, off, psc, fil, chg] = await Promise.all([
+    const [p, off, psc, fil, chg, cap] = await Promise.all([
       ch.company(number), soft(ch.officers(number, 50)), soft(ch.psc(number)), soft(ch.filingHistory(number, undefined, 25)), soft(ch.charges(number)),
-    ]) as [Obj, Obj | null, Obj | null, Obj | null, Obj | null];
+      soft(ch.filingHistory(number, "capital", 100)),
+    ]) as [Obj, Obj | null, Obj | null, Obj | null, Obj | null, Obj | null];
     const acc = o(p.accounts), conf = o(p.confirmation_statement);
     return {
       number, link: `${FIND}/company/${number}`,
@@ -83,6 +84,7 @@ export async function companyDetail(number: string) {
         const tx = s(x.transaction_id); const dv = o(x.description_values);
         return { date: s(x.date), category: humanize(x.category), type: s(x.type), description: humanize(x.description) + (dv.made_up_date ? ` (made up to ${dv.made_up_date})` : ""), doc: tx && o(x.links).document_metadata ? `${FIND}/company/${number}/filing-history/${tx}/document?format=pdf&download=0` : null };
       }) : null,
+      allotments: cap ? allotments(number, a(cap.items)) : null,
       charges: chg ? {
         total: Number(chg.total_count) || 0, outstanding: Number(chg.unfiltered_count ?? chg.total_count) - (Number(chg.satisfied_count) || 0) - (Number(chg.part_satisfied_count) || 0),
         items: a(chg.items).map((x) => ({ status: humanize(x.status), created: s(x.created_on), delivered: s(x.delivered_on), satisfied: s(x.satisfied_on), classification: s(o(x.classification).description), entitled: a(x.persons_entitled).map((y) => String(y.name ?? "")) })),
@@ -116,3 +118,17 @@ export async function officerAppointments(id: string) {
   });
 }
 export type UkOfficer = Awaited<ReturnType<typeof officerAppointments>>;
+
+export type UkAllotment = { allotted: string | null; filed: string | null; capital: { ccy: string; figure: number | null }[]; doc: string | null };
+/**
+ * Share allotments (form SH01, "return of allotment of shares") from a company's capital filings, newest first.
+ * The register's data gives the allotment date and the statement of capital after it (total nominal value per
+ * currency); the number of shares and the price paid are only in the filed document.
+ */
+export function allotments(number: string, items: Obj[]): UkAllotment[] {
+  return items.filter((x) => String(x.type ?? "").toUpperCase() === "SH01" || x.description === "capital-allotment-shares").map((x) => {
+    const dv = o(x.description_values); const tx = s(x.transaction_id);
+    const capital = a(dv.capital).map((c) => { const f = Number(String(c.figure ?? "").replace(/,/g, "")); return { ccy: String(c.currency ?? ""), figure: Number.isFinite(f) ? f : null }; }).filter((c) => c.ccy);
+    return { allotted: s(dv.date) ?? null, filed: s(x.date), capital, doc: tx && o(x.links).document_metadata ? `${FIND}/company/${number}/filing-history/${tx}/document?format=pdf&download=0` : null };
+  }).sort((p, q) => String(q.allotted ?? q.filed ?? "").localeCompare(String(p.allotted ?? p.filed ?? "")));
+}

@@ -26,6 +26,11 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     { name: "OLD, Person", officer_role: "secretary", appointed_on: "2000-01-01", resigned_on: "2010-01-01" },
   ] });
   if (p === "/company/00445790/persons-with-significant-control") return json({ items: [{ name: "Example Holdings Ltd", kind: "corporate-entity-person-with-significant-control", natures_of_control: ["ownership-of-shares-25-to-50-percent"], notified_on: "2016-04-06" }] });
+  if (p === "/company/00445790/filing-history" && url.searchParams.get("category") === "capital") return json({ items: [
+    { date: "2025-03-20", category: "capital", type: "SH01", description: "capital-allotment-shares", description_values: { date: "2025-03-14", capital: [{ figure: "1,250.50", currency: "GBP" }, { figure: "10", currency: "USD" }] }, transaction_id: "SH1", links: { document_metadata: "https://document-api/sh1" } },
+    { date: "2026-02-02", category: "capital", type: "SH01", description: "capital-allotment-shares", description_values: { date: "2026-01-30", capital: [{ figure: "1,300", currency: "GBP" }] }, transaction_id: "SH2", links: {} },
+    { date: "2024-01-01", category: "capital", type: "SH06", description: "capital-cancellation-shares" },
+  ] });
   if (p === "/company/00445790/filing-history") return json({ items: [
     { date: "2026-07-10", category: "accounts", type: "AA", description: "accounts-with-accounts-type-group", description_values: { made_up_date: "2026-02-28" }, transaction_id: "MzQ1", links: { document_metadata: "https://document-api/xyz" } },
     { date: "2026-06-12", category: "confirmation-statement", type: "CS01", description: "confirmation-statement-with-no-updates", transaction_id: "MzQ2", links: {} },
@@ -66,6 +71,7 @@ t("filings: readable description, made-up date, public document link only when a
 t("charges: outstanding = total − satisfied", c.charges?.total === 5 && c.charges.outstanding === 2 && c.charges.items[0].entitled[0] === "Bank Plc", c.charges);
 t("link to the public register", c.link === "https://find-and-update.company-information.service.gov.uk/company/00445790");
 
+t("share allotments (SH01): newest first, statement of capital per currency, document link when filed electronically; other capital filings skipped", c.allotments?.length === 2 && c.allotments[0].allotted === "2026-01-30" && c.allotments[0].doc === null && c.allotments[1].capital[0].figure === 1250.5 && c.allotments[1].capital[1].ccy === "USD" && /SH1\/document/.test(String(c.allotments[1].doc)), c.allotments);
 t("company officers carry their officer id", c.officers?.items[0].id === "AbC123xyz_9" && c.officers.items[1].id === null, c.officers?.items);
 t("officer ids from links only", officerId("/officers/AbC123xyz_9/appointments") === "AbC123xyz_9" && officerId("/company/1") === null && officerId(undefined) === null);
 const os = await searchOfficers("ken murphy");

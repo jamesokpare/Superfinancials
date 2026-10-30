@@ -16,6 +16,7 @@ export const LIMITS: { sync: string; col: string; maxHours: number; count: (m: R
   { sync: "Fundamentals", col: "fund", maxHours: 26, count: (m) => Number(m.n ?? 0) },
   { sync: "Macro data", col: "macrosync", maxHours: 50, count: (m) => Number(m.n ?? 0) },
   { sync: "African markets", col: "afr", maxHours: 50, count: (m) => Number(m.n ?? 0) },
+  { sync: "SEC filings", col: "filings", maxHours: 50, count: (m) => Number(m.n ?? 0) },
 ];
 
 export async function checkSyncHealth(store: DocStore, now = new Date()): Promise<HealthRow[]> {

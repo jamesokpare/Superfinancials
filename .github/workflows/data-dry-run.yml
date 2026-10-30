@@ -73,10 +73,13 @@ jobs:
       - name: African markets (dry run)
         continue-on-error: true
         run: set -o pipefail; npm run -s africa:sync -- --dry-run 2>&1 | tee africa.txt
+      - name: SEC filings (dry run)
+        continue-on-error: true
+        run: set -o pipefail; npm run -s filings:sync -- --dry-run --only=AAPL,MSFT,JPM 2>&1 | tee filings.txt
       - name: Summary
         if: always()
         run: |
-          for f in providers market news fundamentals macro africa; do
+          for f in providers market news fundamentals macro africa filings; do
             [ -f "$f.txt" ] || continue
             { echo "## ${f^}"; echo '```'; cat "$f.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           done

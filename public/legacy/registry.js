@@ -22,6 +22,8 @@ const UK_TYPE = { ltd: 'Private limited company', plc: 'Public limited company',
 const ukType = t => UK_TYPE[t] || (t ? String(t).replace(/-/g, ' ').replace(/^./, c => c.toUpperCase()) : '—');
 const ukD = d => (d ? fd(Date.parse(d)) : '—');
 const ukStatus = s => { const t = String(s || 'unknown'); const k = /^active$/i.test(t) ? 'ok' : /dissolved|liquidation|insolvency|receivership|administration|removed|closed/i.test(t) ? 'bad' : ''; return `<span class="badge ${k}">${esc(t.replace(/-/g, ' ').toUpperCase())}</span>`; };
+/** SH01 allotments in the last two years. */
+const ukAllot24 = c => (c.allotments || []).filter(x => Date.parse(x.allotted || x.filed) >= Date.now() - 730 * 864e5).length;
 const ukNum = s => { const n = String(s || '').trim().toUpperCase().replace(/\s+/g, ''); return /^\d{1,8}$/.test(n) ? n.padStart(8, '0') : /^[A-Z]{2}\d{6}$/.test(n) ? n : null; };
 
 async function ukGet(path) {
@@ -58,7 +60,7 @@ async function ukCompany(el, num) {
       <div><dt>Confirmation statement</dt><dd>Next due ${due(conf.nextDue, conf.overdue)}<div class="sub">Last made up to ${ukD(conf.lastMadeUpTo)}</div></dd></div>
       ${P.previousNames.length ? `<div><dt>Previous names</dt><dd>${P.previousNames.map(x => `${esc(x.name)} <span class="sub">to ${ukD(x.to)}</span>`).join('<br>')}</dd></div>` : ''}
     </dl>${flags ? `<div class="row" style="margin-top:10px;gap:6px">${flags}</div>` : ''}</div></section>
-    <div class="grid">${panelH('Officers', { cls: 'c7', id: 'ukO', flush: true, meta: c.officers ? `${c.officers.active} active · ${c.officers.resigned} resigned` : '' })}${panelH('People with significant control', { cls: 'c5', id: 'ukP', flush: true })}${panelH('Filing history', { cls: 'c7', id: 'ukF2', flush: true, meta: `<a href="${esc(c.link)}/filing-history" target="_blank" rel="noopener noreferrer">All filings</a>` })}${panelH('Charges (secured lending)', { cls: 'c5', id: 'ukCh', flush: true, meta: c.charges ? `${Math.max(0, c.charges.outstanding)} outstanding of ${c.charges.total}` : '' })}</div>
+    <div class="grid">${panelH('Officers', { cls: 'c7', id: 'ukO', flush: true, meta: c.officers ? `${c.officers.active} active · ${c.officers.resigned} resigned` : '' })}${panelH('People with significant control', { cls: 'c5', id: 'ukP', flush: true })}${panelH('Filing history', { cls: 'c7', id: 'ukF2', flush: true, meta: `<a href="${esc(c.link)}/filing-history" target="_blank" rel="noopener noreferrer">All filings</a>` })}${panelH('Charges (secured lending)', { cls: 'c5', id: 'ukCh', flush: true, meta: c.charges ? `${Math.max(0, c.charges.outstanding)} outstanding of ${c.charges.total}` : '' })}${panelH('Share allotments (SH01)', { cls: 'c12', id: 'ukA', flush: true, meta: c.allotments ? `${c.allotments.length} allotment${c.allotments.length === 1 ? '' : 's'} on file${ukAllot24(c) ? ` · ${ukAllot24(c)} in the last two years` : ''}` : '' })}</div>
     <div class="pf" style="border:0;padding:4px 0"><span>Source: Companies House public register, fetched live. Contains public sector information licensed under the Open Government Licence v3.0.</span></div>`;
   const officers = () => {
     const rows = (c.officers ? c.officers.items : []).filter(x => UK.resigned || !x.resigned);
@@ -83,6 +85,13 @@ async function ukCompany(el, num) {
     { k: 'x', h: 'Filing', f: x => `${esc(x.description || x.type || '')}<div class="sub">${esc(x.category || '')}</div>` },
     { k: 'p', h: 'Document', a: 'r', f: x => x.doc ? `<a href="${esc(x.doc)}" target="_blank" rel="noopener noreferrer">PDF</a>` : '—' },
   ] });
+  table($('#ukA', el), { dense: true, rows: c.allotments || [], empty: c.allotments ? '<b>No share allotments filed</b>A company files form SH01 within a month of issuing new shares, for example in a funding round.' : '<b>Not available</b>', cols: [
+    { k: 'a', h: 'Shares allotted on', f: x => ukD(x.allotted) },
+    { k: 'f', h: 'Filed', f: x => `<span class="sub">${ukD(x.filed)}</span>` },
+    { k: 'c', h: 'Share capital after the allotment', a: 'r', f: x => x.capital.length ? x.capital.map(k => `${esc(k.ccy)} ${k.figure == null ? '—' : nf(k.figure, k.figure % 1 ? 2 : 0)}`).join('<br>') : '—' },
+    { k: 'p', h: 'Document', a: 'r', f: x => x.doc ? `<a href="${esc(x.doc)}" target="_blank" rel="noopener noreferrer">SH01 (PDF)</a>` : '<span class="sub">paper filing</span>' },
+  ] });
+  $('#ukA', el).insertAdjacentHTML('beforeend', '<p class="note" style="padding:0 12px 10px">New shares issued, for example in a funding round. The register gives the date and the total nominal share capital after the allotment; the number of shares and the price paid are in the SH01 document.</p>');
   table($('#ukCh', el), { dense: true, rows: c.charges ? c.charges.items : [], empty: c.charges ? '<b>No charges registered</b>' : '<b>Not available</b>', cols: [
     { k: 'c', h: 'Created', f: x => ukD(x.created) },
     { k: 's', h: 'Status', f: x => `${esc(x.status)}${x.satisfied ? `<div class="sub">${ukD(x.satisfied)}</div>` : ''}` },
@@ -395,7 +404,7 @@ if (typeof PAGES !== 'undefined' && PAGES.pco) {
       on(sec, 'click', '[data-uksearch]', () => { REG.q = c.name; REG.cc = 'UK'; REG.auto = true; go('registry'); });
       if (n) ukGet('/api/uk-companies/' + n).then(r => {
         const P = r.profile; const box = $('#ukPc', sec); if (!box) return;
-        box.innerHTML = `<dl class="kv"><div><dt>Registered name</dt><dd>${esc(P.name)} ${ukStatus(P.status)}</dd></div><div><dt>Company number</dt><dd class="mono">${esc(r.number)}</dd></div><div><dt>Incorporated</dt><dd>${ukD(P.created)}</dd></div><div><dt>Accounts next due</dt><dd>${ukD(P.accounts.nextDue)}${P.accounts.overdue ? ' <span class="badge bad">OVERDUE</span>' : ''}</dd></div><div><dt>Active officers</dt><dd>${r.officers ? r.officers.active : '—'}</dd></div><div><dt>People with significant control</dt><dd>${r.psc && r.psc.length ? esc(r.psc.filter(x => !x.ceased).map(x => x.name).slice(0, 3).join(', ')) || '—' : '—'}</dd></div></dl>`;
+        box.innerHTML = `<dl class="kv"><div><dt>Registered name</dt><dd>${esc(P.name)} ${ukStatus(P.status)}</dd></div><div><dt>Company number</dt><dd class="mono">${esc(r.number)}</dd></div><div><dt>Incorporated</dt><dd>${ukD(P.created)}</dd></div><div><dt>Accounts next due</dt><dd>${ukD(P.accounts.nextDue)}${P.accounts.overdue ? ' <span class="badge bad">OVERDUE</span>' : ''}</dd></div><div><dt>Active officers</dt><dd>${r.officers ? r.officers.active : '—'}</dd></div><div><dt>People with significant control</dt><dd>${r.psc && r.psc.length ? esc(r.psc.filter(x => !x.ceased).map(x => x.name).slice(0, 3).join(', ')) || '—' : '—'}</dd></div><div><dt>Share allotments (SH01)</dt><dd>${r.allotments ? (r.allotments.length ? `${r.allotments.length} on file · latest ${ukD(r.allotments[0].allotted || r.allotments[0].filed)}${ukAllot24(r) ? ` · ${ukAllot24(r)} in the last two years` : ''}` : 'None filed') : '—'}</dd></div></dl>`;
       }).catch(e => { const box = $('#ukPc', sec); if (box) box.innerHTML = ukErr(e); });
     } catch (e) { console.error(e); }
   };
