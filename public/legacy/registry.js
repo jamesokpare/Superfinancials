@@ -65,7 +65,7 @@ async function ukCompany(el, num) {
     const box = $('#ukO', el);
     box.innerHTML = '';
     table(box, { dense: true, rows, empty: c.officers ? '<b>No current officers listed</b>' : '<b>Officers are not available</b>', cols: [
-      { k: 'n', h: 'Name', f: x => `${esc(x.name)}<div class="sub">${esc([x.occupation, x.nationality].filter(Boolean).join(' · '))}</div>` },
+      { k: 'n', h: 'Name', f: x => `${x.id ? `<a class="tk" ${regHref('off~' + x.id)} style="font-family:var(--f-ui)">${esc(x.name)}</a>` : esc(x.name)}<div class="sub">${esc([x.occupation, x.nationality].filter(Boolean).join(' · '))}</div>` },
       { k: 'r', h: 'Role', f: x => esc(x.role) },
       { k: 'a', h: 'Appointed', a: 'r', f: x => ukD(x.appointed) },
       ...(UK.resigned ? [{ k: 'z', h: 'Resigned', a: 'r', f: x => ukD(x.resigned) }] : []),
@@ -94,7 +94,7 @@ async function ukCompany(el, num) {
 /* =====================================================================
    Global part: shared helpers
    ===================================================================== */
-const REG = { q: '', cc: '', res: null, err: null, busy: false, auto: false, desk: {}, deskSt: 'off', db: null };
+const REG = { mode: 'co', q: '', cc: '', res: null, err: null, busy: false, auto: false, desk: {}, deskSt: 'off', db: null };
 const REG_LS = 'sf.reg.v1';
 const REG_STATUS = ['Active', 'Inactive', 'Dissolved', 'In liquidation', 'In administration', 'Struck off', 'Unknown'];
 const REG_SRC = { dd: ['DATA DESK', 'live desk'], uk: ['COMPANIES HOUSE', ''], lei: ['GLEIF', ''], no: ['BRØNNØYSUND', ''], fr: ['SIRENE', ''] };
@@ -142,12 +142,14 @@ if (typeof ROUTES !== 'undefined' && typeof NAV_MKT !== 'undefined') {
 /* ---------- search ---------- */
 async function regSearch(pg, q) {
   REG.q = q; REG.busy = true; REG.err = null; REG.res = null; regResults(pg);
+  if (REG.mode === 'off') { try { REG.res = { officers: await ukGet(`/api/uk-officers?n=25&q=${encodeURIComponent(q)}`) }; } catch (e) { REG.err = e; } REG.busy = false; regResults(pg); return; }
   try { REG.res = await ukGet(`/api/companies?n=25&q=${encodeURIComponent(q)}${REG.cc ? '&cc=' + encodeURIComponent(REG.cc) : ''}`); } catch (e) { REG.err = e; }
   REG.busy = false; regResults(pg);
 }
 function regResults(pg) {
   const el = $('#regR', pg); if (!el) return;
   if (!REG.q) { el.innerHTML = ''; return; }
+  if (REG.mode === 'off') { regOfficerResults(el); return; }
   const desk = regDeskSearch(REG.q, REG.cc).map(x => ({ src: 'dd', id: x.id, name: x.name, cc: x.cc, number: x.regNo, lei: x.lei, status: x.status, type: x.type, created: x.inc, address: x.addr, reg: x.registry }));
   const live = REG.res ? REG.res.items : [];
   const rows = [...desk, ...live];
@@ -161,6 +163,30 @@ function regResults(pg) {
     { k: 's', h: 'Status', f: x => regStatus(x.status) },
     { k: 'src', h: 'Source', f: x => regSrc(x.src) },
     { k: 'd', h: 'Incorporated', a: 'r', f: x => regD(x.created) },
+  ] });
+}
+
+/* ---------- UK officers (Companies House): search results and one officer's appointments ---------- */
+function regOfficerResults(el) {
+  const r = REG.res && REG.res.officers; const rows = r ? r.items : [];
+  el.innerHTML = `${REG.busy ? '<p class="note" style="padding:8px 20px">Searching UK officers…</p>' : ''}${REG.err ? ukErr(REG.err) : ''}<div class="pb flush" id="regT"></div><div class="pf"><span>${r ? `Companies House: ${nf(r.total, 0)} officers match` : ''}</span><span>First 25 matches · born shows month and year only, as on the register</span></div>`;
+  table($('#regT', el), { dense: true, rows, empty: REG.busy ? '<b>Searching…</b>' : '<b>No officers match</b>Try the surname first, e.g. “Smith John”.', cols: [
+    { k: 'n', h: 'Officer', f: x => `<a class="tk" ${regHref('off~' + x.id)} style="font-family:var(--f-ui)">${esc(x.name)}</a><div class="sub" style="max-width:420px">${esc(x.address || '')}</div>` },
+    { k: 'b', h: 'Born', f: x => esc(x.born || '—') },
+    { k: 'a', h: 'Appointments', a: 'r', f: x => x.appointments == null ? '—' : nf(x.appointments, 0) },
+    { k: 'd', h: 'Details', f: x => `<span class="sub">${esc(x.description || '')}</span>` },
+  ] });
+}
+async function regOfficer(el, id) {
+  el.innerHTML = '<section class="panel"><p class="note" style="padding:16px 20px">Loading the officer\'s appointments…</p></section>';
+  let r; try { r = await ukGet('/api/uk-officers/' + encodeURIComponent(id)); } catch (e) { el.innerHTML = `<section class="panel">${ukErr(e)}</section>`; return; }
+  el.innerHTML = `<section class="panel"><header class="ph"><span class="pt">${esc(r.name || 'Officer')}</span><span class="pm">${r.born ? `born ${esc(r.born)} · ` : ''}${r.active} active of ${r.total} appointments <a class="btn sm ghost" href="${esc(r.link)}" target="_blank" rel="noopener noreferrer">View on Companies House</a></span></header><div class="pb flush" id="regOffT"></div><div class="pf"><span>Source: Companies House officer appointments</span><span>Showing up to 50</span></div></section>`;
+  table($('#regOffT', el), { dense: true, rows: r.items, empty: '<b>No appointments listed</b>', cols: [
+    { k: 'c', h: 'Company', f: x => `${x.number ? `<a class="tk" ${regHref('uk~' + x.number)} style="font-family:var(--f-ui)">${esc(x.company)}</a>` : esc(x.company)}<div class="sub mono">${esc(x.number || '')}</div>` },
+    { k: 's', h: 'Company status', f: x => ukStatus(x.status) },
+    { k: 'r', h: 'Role', f: x => `${esc(x.role)}${x.occupation ? `<div class="sub">${esc(x.occupation)}</div>` : ''}` },
+    { k: 'a', h: 'Appointed', a: 'r', f: x => ukD(x.appointed) },
+    { k: 'z', h: 'Resigned', a: 'r', f: x => x.resigned ? ukD(x.resigned) : '<span class="up">current</span>' },
   ] });
 }
 
@@ -244,16 +270,17 @@ function regDeskCompany(el, id) {
 
 /* ---------- page ---------- */
 PAGES.registry = (pg, p) => {
-  const m = /^(uk|lei|dd|no|fr)~(.+)$/.exec(p || ''); const kind = m ? m[1] : null, key = m ? m[2] : null;
+  const m = /^(uk|lei|dd|no|fr|off)~(.+)$/.exec(p || ''); const kind = m ? m[1] : null, key = m ? m[2] : null;
   const cc = typeof ccOpts === 'function' ? ccOpts().slice(1) : [];
   pg.innerHTML = hdr('registry', 'Company records from around the world in one search: the live national registers of the UK (Companies House), Norway (Brønnøysund) and France (SIRENE), the global LEI register (GLEIF, 200+ countries) and companies entered by the Superfinancials data desk. Open a company for its registration details, officers, owners, filings and group structure where the source has them.', `<a class="btn" href="https://search.gleif.org/" target="_blank" rel="noopener noreferrer">GLEIF</a><a class="btn" href="${UK_FIND}/" target="_blank" rel="noopener noreferrer">Companies House</a>`) +
-    `<section class="panel"><form class="uk-f" id="regForm" role="search"><input class="inp" id="regQ" type="search" maxlength="160" placeholder="Company name, registration number or LEI" aria-label="Search the company registry" value="${esc(kind ? '' : REG.q)}"><select class="inp" id="regCc" aria-label="Country" style="flex:0 1 220px"><option value="">All countries</option>${cc.map(([k, l]) => `<option value="${esc(k)}" ${k === REG.cc ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><button class="btn pri" type="submit">Search</button></form><div id="regR"></div></section><div id="regC"></div>`;
+    `<section class="panel"><form class="uk-f" id="regForm" role="search"><select class="inp" id="regMode" aria-label="Search for" style="flex:0 1 190px"><option value="co" ${REG.mode !== 'off' ? 'selected' : ''}>Companies</option><option value="off" ${REG.mode === 'off' ? 'selected' : ''}>People (UK officers)</option></select><input class="inp" id="regQ" type="search" maxlength="160" placeholder="${REG.mode === 'off' ? 'Officer name, e.g. Smith John' : 'Company name, registration number or LEI'}" aria-label="Search the company registry" value="${esc(kind ? '' : REG.q)}"><select class="inp" id="regCc" aria-label="Country" style="flex:0 1 220px"><option value="">All countries</option>${cc.map(([k, l]) => `<option value="${esc(k)}" ${k === REG.cc ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><button class="btn pri" type="submit">Search</button></form><div id="regR"></div></section><div id="regC"></div>`;
   $('#regForm', pg).addEventListener('submit', e => {
-    e.preventDefault(); const q = $('#regQ', pg).value.trim(); REG.cc = $('#regCc', pg).value; if (q.length < 2) return;
-    const lei = regLei(q); if (lei) { go('registry', 'lei~' + lei); return; }
+    e.preventDefault(); const q = $('#regQ', pg).value.trim(); REG.cc = $('#regCc', pg).value; const mode = $('#regMode', pg).value; if (mode !== REG.mode) { REG.mode = mode; REG.res = null; } if (q.length < (REG.mode === 'off' ? 3 : 2)) return;
+    const lei = REG.mode === 'co' && regLei(q); if (lei) { go('registry', 'lei~' + lei); return; }
     if (kind) { REG.q = q; REG.auto = true; go('registry'); return; }
     regSearch(pg, q);
   });
+  $('#regMode', pg).onchange = e => { const q = $('#regQ', pg); q.placeholder = e.target.value === 'off' ? 'Officer name, e.g. Smith John' : 'Company name, registration number or LEI'; $('#regCc', pg).disabled = e.target.value === 'off'; };
   on(pg, 'click', '[data-uklogin]', () => window.sfAuth && window.sfAuth.goLogin());
   if (kind) {
     $('#regR', pg).innerHTML = REG.q ? `<p class="note" style="padding:8px 20px"><a href="#registry" data-go="registry">Back to results for “${esc(REG.q)}”</a></p>` : '';
@@ -261,6 +288,7 @@ PAGES.registry = (pg, p) => {
     if (kind === 'uk') { const n = ukNum(key); if (n) ukCompany(box, n); else box.innerHTML = '<section class="panel"><div class="empty"><b>Not a UK company number</b></div></section>'; }
     else if (kind === 'lei') { const l = regLei(key); if (l) regLeiCompany(box, l); else box.innerHTML = '<section class="panel"><div class="empty"><b>Not a valid LEI</b></div></section>'; }
     else if (kind === 'no' || kind === 'fr') regNatCompany(box, kind, key);
+    else if (kind === 'off') regOfficer(box, key);
     else regDeskCompany(box, key);
   } else if (REG.auto && REG.q) { REG.auto = false; regSearch(pg, REG.q); }
   else if (REG.q) { regResults(pg); if (!REG.res && !REG.busy && !REG.err) regSearch(pg, REG.q); }
@@ -269,7 +297,7 @@ PAGES.registry = (pg, p) => {
     if (all.length) { $('#regR', pg).innerHTML = `<header class="ph"><span class="pt" style="font-size:14px">Recently added by the data desk</span></header><div class="pb flush" id="regRecent"></div>`; table($('#regRecent', pg), { dense: true, rows: all, cols: [{ k: 'n', h: 'Company', f: x => `<a class="tk" ${regHref('dd~' + x.id)} style="font-family:var(--f-ui)">${esc(x.name)}</a>` }, { k: 'c', h: 'Country', f: x => esc(regCN(x.cc)) }, { k: 'no', h: 'Number', f: x => `<span class="mono">${esc(x.regNo || '—')}</span>` }, { k: 's', h: 'Status', f: x => regStatus(x.status) }] }); }
   }
 };
-PAGES.ukreg = (pg, p) => PAGES.registry(pg, p ? (/^(uk|lei|dd|no|fr)~/.test(p) ? p : 'uk~' + p) : null);
+PAGES.ukreg = (pg, p) => PAGES.registry(pg, p ? (/^(uk|lei|dd|no|fr|off)~/.test(p) ? p : 'uk~' + p) : null);
 
 /* =====================================================================
    Data studio: "Company registry" tab (platform owner only)

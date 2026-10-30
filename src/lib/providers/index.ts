@@ -50,26 +50,28 @@ export type Connection = {
   env: string;
   kind: "market data" | "news" | "economic" | "fx" | "company registry" | "database";
   docs: string;
+  /** What it feeds in the app, in a few words (shown on the Data sources and landing pages). */
+  uses: string;
   /** Makes one cheap request. Throws if the key is missing or rejected. */
   ping: () => Promise<unknown>;
 };
 
 export const CONNECTIONS: Connection[] = [
-  { id: "africa-api", name: "Africa API", env: africa.ENV, kind: "economic", docs: "https://africa-api.com", ping: () => africa.createAfricaApi().ping() },
-  { id: "alphavantage", name: "Alpha Vantage", env: av.ENV, kind: "market data", docs: "https://www.alphavantage.co/documentation/", ping: () => av.createAlphaVantage().ping() },
-  { id: "companies-house", name: "Companies House", env: ch.ENV, kind: "company registry", docs: "https://developer-specs.company-information.service.gov.uk/", ping: () => ch.createCompaniesHouse().ping() },
-  { id: "currents", name: "Currents API", env: currents.ENV, kind: "news", docs: "https://currentsapi.services/en/docs/", ping: () => currents.createCurrents().ping() },
-  { id: "database", name: "Postgres (DATABASE_URL)", env: db.ENV, kind: "database", docs: "https://github.com/porsager/postgres", ping: db.ping },
-  { id: "eodhd", name: "EODHD", env: eodhd.ENV, kind: "market data", docs: "https://eodhd.com/financial-apis/", ping: () => eodhd.createEodhd().ping() },
-  { id: "exchangerate", name: "ExchangeRate-API", env: fx.ENV, kind: "fx", docs: "https://www.exchangerate-api.com/docs/overview", ping: () => fx.createExchangeRate().ping() },
-  { id: "fmp", name: "Financial Modeling Prep", env: fmp.ENV, kind: "market data", docs: "https://site.financialmodelingprep.com/developer/docs", ping: () => fmp.createFmp().ping() },
-  { id: "fred", name: "FRED", env: fred.ENV, kind: "economic", docs: "https://fred.stlouisfed.org/docs/api/fred/", ping: () => fred.createFred().ping() },
-  { id: "mansa", name: "Mansa API", env: mansa.ENV, kind: "market data", docs: "https://mansaapi.com/docs", ping: () => mansa.createMansa().ping() },
-  { id: "marketaux", name: "Marketaux", env: maux.ENV, kind: "news", docs: "https://www.marketaux.com/documentation", ping: () => maux.createMarketaux().ping() },
-  { id: "marketstack", name: "Marketstack", env: mstack.ENV, kind: "market data", docs: "https://marketstack.com/documentation_v2", ping: () => mstack.createMarketstack().ping() },
-  { id: "mystocks-africa", name: "MyStocks Africa", env: mysa.ENV, kind: "market data", docs: "https://mystocks.africa/partners/docs/market-data", ping: () => mysa.createMyStocksAfrica().ping() },
-  { id: "newsapi-ai", name: "NewsAPI.ai", env: newsai.ENV, kind: "news", docs: "https://newsapi.ai/documentation", ping: () => newsai.createNewsApiAi().ping() },
-  { id: "ngx-pulse", name: "NGX Pulse", env: ngx.ENV, kind: "market data", docs: "https://ngxpulse.ng/api", ping: () => ngx.createNgxPulse().ping() },
+  { id: "africa-api", uses: "Country profiles, trade, African elections, NGX prices", name: "Africa API", env: africa.ENV, kind: "economic", docs: "https://africa-api.com", ping: () => africa.createAfricaApi().ping() },
+  { id: "alphavantage", uses: "Prices, fundamentals, news sentiment", name: "Alpha Vantage", env: av.ENV, kind: "market data", docs: "https://www.alphavantage.co/documentation/", ping: () => av.createAlphaVantage().ping() },
+  { id: "companies-house", uses: "UK company register, officers", name: "Companies House", env: ch.ENV, kind: "company registry", docs: "https://developer-specs.company-information.service.gov.uk/", ping: () => ch.createCompaniesHouse().ping() },
+  { id: "currents", uses: "Market news", name: "Currents API", env: currents.ENV, kind: "news", docs: "https://currentsapi.services/en/docs/", ping: () => currents.createCurrents().ping() },
+  { id: "database", uses: "App database", name: "Postgres (DATABASE_URL)", env: db.ENV, kind: "database", docs: "https://github.com/porsager/postgres", ping: db.ping },
+  { id: "eodhd", uses: "Prices, intraday bars, fundamentals, earnings, dividends, splits, IPOs, news", name: "EODHD", env: eodhd.ENV, kind: "market data", docs: "https://eodhd.com/financial-apis/", ping: () => eodhd.createEodhd().ping() },
+  { id: "exchangerate", uses: "FX reference rates", name: "ExchangeRate-API", env: fx.ENV, kind: "fx", docs: "https://www.exchangerate-api.com/docs/overview", ping: () => fx.createExchangeRate().ping() },
+  { id: "fmp", uses: "Prices, fundamentals, earnings, economic, dividend and IPO calendars", name: "Financial Modeling Prep", env: fmp.ENV, kind: "market data", docs: "https://site.financialmodelingprep.com/developer/docs", ping: () => fmp.createFmp().ping() },
+  { id: "fred", uses: "U.S. rates and macro series, release calendar", name: "FRED", env: fred.ENV, kind: "economic", docs: "https://fred.stlouisfed.org/docs/api/fred/", ping: () => fred.createFred().ping() },
+  { id: "mansa", uses: "NGX prices, movers, ETFs, dividends, disclosures", name: "Mansa API", env: mansa.ENV, kind: "market data", docs: "https://mansaapi.com/docs", ping: () => mansa.createMansa().ping() },
+  { id: "marketaux", uses: "Market news with tickers and sentiment", name: "Marketaux", env: maux.ENV, kind: "news", docs: "https://www.marketaux.com/documentation", ping: () => maux.createMarketaux().ping() },
+  { id: "marketstack", uses: "End-of-day prices", name: "Marketstack", env: mstack.ENV, kind: "market data", docs: "https://marketstack.com/documentation_v2", ping: () => mstack.createMarketstack().ping() },
+  { id: "mystocks-africa", uses: "NGX prices, company news, market intelligence", name: "MyStocks Africa", env: mysa.ENV, kind: "market data", docs: "https://mystocks.africa/partners/docs/market-data", ping: () => mysa.createMyStocksAfrica().ping() },
+  { id: "newsapi-ai", uses: "Business and African market news", name: "NewsAPI.ai", env: newsai.ENV, kind: "news", docs: "https://newsapi.ai/documentation", ping: () => newsai.createNewsApiAi().ping() },
+  { id: "ngx-pulse", uses: "NGX prices, market summary, disclosures, NASD OTC", name: "NGX Pulse", env: ngx.ENV, kind: "market data", docs: "https://ngxpulse.ng/api", ping: () => ngx.createNgxPulse().ping() },
 ];
 
 export const isConfigured = (c: Pick<Connection, "env">) => !!envKey(c.env);

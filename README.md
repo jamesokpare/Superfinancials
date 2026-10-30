@@ -71,6 +71,8 @@ map to low / medium / high effort.
 | `src/app/api/ai/` | Server-side Claude call for `sample` |
 | `src/lib/providers/` | Clients for the external market-data, news and economic APIs |
 | `src/app/api/providers/` | Data-connection status and health check |
+| `src/lib/market/intraday.ts`, `src/app/api/intraday/` | Delayed quote and latest-session intraday bars from EODHD, on demand (security pages) |
+| `public/legacy/connections.js` | Data sources page (connections, sync runs), landing-page connection list, intraday panel |
 | `src/lib/market/` | Market sync: instrument → provider map, fetchers, writer |
 | `src/app/api/cron/market-sync/` | Scheduled sync endpoint (Vercel Cron) |
 | `src/lib/news/`, `src/app/api/cron/news-sync/` | News sync and its scheduled endpoint |
@@ -140,8 +142,10 @@ Every client has a `ping()`. To check which keys are set and working:
 npm run providers:check
 ```
 
-or, signed in, `GET /api/providers` (configured or not) and
-`GET /api/providers?check=1` (pings each). Errors are `ProviderError` /
+or, signed in, `GET /api/providers` (configured or not, with each one's env var and what it feeds) and
+`GET /api/providers?check=1` (pings each). Signed out, `GET /api/providers` returns only the names, what
+each feeds and whether it is set up, for the landing page. The **Data sources** page shows this list with a
+"Test connections" button and the last run of every scheduled sync (from each sync's `_meta` doc). Errors are `ProviderError` /
 `MissingKeyError` with key values redacted.
 
 ## Live market data
@@ -202,8 +206,10 @@ lists, per provider, how many instruments it resolved and any error.
 
 The Market news page now leads with **Latest headlines** from the connected
 news providers. A news sync (`src/lib/news/`) pulls recent articles from
-Marketaux (tickers and sentiment), NewsAPI.ai (broad business coverage) and
-Currents, plus African-markets queries, and the press-release feeds of official
+Marketaux (tickers and sentiment), NewsAPI.ai (broad business coverage),
+Currents, Alpha Vantage (one `NEWS_SENTIMENT` request a run: market, economy and earnings stories with a
+sentiment score and the tickers each story is relevant to) and EODHD (company news with sentiment for 4 tracked
+U.S. companies a run, rotating through the list, `EODHD_NEWS_TICKERS`), plus African-markets queries, and the press-release feeds of official
 sources (Federal Reserve, ECB, Bank of England, BLS, BEA, EIA, SEC, IMF; no key,
 filter chip "Official sources"), and startup and deal news (TechCrunch Venture, Crunchbase News,
 TechCabal, Techpoint Africa, Disrupt Africa, Wamda, Sifted, EU-Startups; RSS, no key, filter chip
@@ -287,13 +293,16 @@ sources at once and lists them together, each labelled with where it came from:
 | Data desk | Companies you add in the Data studio | Shared database (`adm_reg`), searched in the browser |
 | Brønnøysund | Norway, live (no key, NLOD 2.0) | `searchRegistry` / `GET /api/companies/no/<org number>` (`src/lib/registry/`) |
 | recherche-entreprises (SIRENE + RNE) | France, live (no key, Licence Ouverte 2.0), with directors | `GET /api/companies/fr/<SIREN>` |
-| Companies House | UK, live | `GET /api/uk-companies?q=`, `GET /api/uk-companies/<number>` (`src/lib/ukreg/`, needs `COMPANIES_HOUSE_API_KEY`) |
+| Companies House | UK, live | `GET /api/uk-companies?q=`, `GET /api/uk-companies/<number>`; officers: `GET /api/uk-officers?q=`, `GET /api/uk-officers/<officer id>` (`src/lib/ukreg/`, needs `COMPANIES_HOUSE_API_KEY`) |
 | GLEIF | ~2.9M legal entities with an LEI in 200+ countries, live | `GET /api/companies?q=&cc=`, `GET /api/companies/lei/<LEI>` (`src/lib/registry/`, no key) |
 
 A country filter narrows the search (the UK register is skipped for other
 countries), and an LEI typed into the search opens that company directly. A UK
 company that also has an LEI is shown once, as its UK record.
 
+- **People (UK officers)**: switch the search to people to find directors, secretaries and LLP members by
+  name; an officer's page lists every company they are or were appointed to, linked to those records.
+  Officer names on a UK company record link there too.
 - **UK records** show status, type, incorporation, registered office, SIC
   codes, accounts and confirmation-statement deadlines, previous names,
   officers, people with significant control, filings (with PDFs) and charges.
@@ -392,7 +401,8 @@ that indicator for that country.
 | FRED | `FRED_API_KEY` | U.S. release dates (CPI, payrolls, GDP, PCE …), next 45 days | Market calendars |
 | U.S. Treasury FiscalData | none | Upcoming Treasury auctions | Market calendars |
 | FMP, else EODHD | `FMP_API_KEY` / `EODHD_API_KEY` | Economic calendar with consensus and actuals; IPOs | Market calendars |
-| FMP | `FMP_API_KEY` | Ex-dividend dates for the tracked U.S. stocks and ETFs | Market calendars |
+| FMP, else EODHD | `FMP_API_KEY` / `EODHD_API_KEY` | Ex-dividend dates for the tracked U.S. stocks and ETFs | Market calendars |
+| EODHD | `EODHD_API_KEY` | Stock splits (and reverse splits) for the tracked U.S. stocks and ETFs, next 90 days | Market calendars ("Stock split") |
 | SEC EDGAR (Form D) | `SEC_USER_AGENT` ("Company contact@domain"; skipped without it) | U.S. private placements: issuer, sector, state, year founded, amount raised, related persons. Pooled funds (venture, private equity, hedge): type, amount offered and sold, investors, minimum | Private companies, Deal flow; Fund performance › **Funds raising now** |
 | U.S. Treasury | none | Daily par yield curve: 3M, 1Y, 2Y, 5Y, 10Y, 30Y (public domain) | U.S. yields (DESK prices) |
 | New York Fed | none | SOFR (instrument) and EFFR (series); credit line "Content from the New York Fed…" kept in the notes | Money markets, Country data |

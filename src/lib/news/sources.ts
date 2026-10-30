@@ -4,11 +4,14 @@
  * scheduled run stays inside free-plan limits.
  */
 import { ArticleInfoFlags, QueryItems, ReturnInfo } from "eventregistry";
+import { createAlphaVantage } from "@/lib/providers/alphavantage";
 import { createCurrents } from "@/lib/providers/currents";
+import { createEodhd } from "@/lib/providers/eodhd";
+import { US_EQUITIES } from "@/lib/market/instruments";
 import { createMarketaux } from "@/lib/providers/marketaux";
 import { createNewsApiAi } from "@/lib/providers/newsapi-ai";
 
-export type NewsProvider = "marketaux" | "newsapi" | "currents" | "official" | "deals";
+export type NewsProvider = "marketaux" | "newsapi" | "currents" | "alphavantage" | "eodhd" | "official" | "deals";
 
 export type NewsItem = {
   /** Stable id: a hash of the canonical URL. */
@@ -118,6 +121,48 @@ export async function currentsNews(since: Date): Promise<NewsItem[]> {
       if (it) out.push(it);
     }
   }
+  return out;
+}
+
+// --- Alpha Vantage: market news with sentiment scored per article and per ticker ----------------
+type AvTicker = { ticker?: string; relevance_score?: string; ticker_sentiment_score?: string };
+type AvArticle = { title?: string; url?: string; time_published?: string; summary?: string; banner_image?: string | null; source?: string; source_domain?: string; overall_sentiment_score?: number | string; ticker_sentiment?: AvTicker[] };
+/** "20261029T083000" → ISO time. */
+export const avTime = (s: unknown) => { const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?/.exec(String(s ?? "")); return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] ?? "00"}Z` : null; };
+/** One request (free keys allow 25 a day): the latest market, economy and earnings stories. */
+export async function alphaVantageNews(since: Date, limit = 50): Promise<NewsItem[]> {
+  const from = since.toISOString().replace(/[-:]/g, "").slice(0, 13); // YYYYMMDDTHHMM
+  const res = await createAlphaVantage().news({ topics: "financial_markets,economy_macro,earnings", time_from: from, sort: "LATEST", limit }) as { feed?: AvArticle[] };
+  const out: NewsItem[] = [];
+  for (const a of res.feed ?? []) {
+    const url = String(a.url ?? "");
+    const tk = (a.ticker_sentiment ?? []).filter((x) => Number(x.relevance_score) >= 0.3 && x.ticker && !x.ticker.includes(":")).map((x) => String(x.ticker));
+    const sent = Number(a.overall_sentiment_score);
+    const it = item({ t: avTime(a.time_published), title: a.title, sum: a.summary, url, src: a.source || a.source_domain || host(url), via: "alphavantage", img: a.banner_image ?? undefined, tk, cc: [], sent: Number.isFinite(sent) ? Number(Math.max(-1, Math.min(1, sent)).toFixed(3)) : null });
+    if (it) out.push(it);
+  }
+  return out;
+}
+
+// --- EODHD: company news with sentiment, a few tracked U.S. companies a run in rotation --------------
+/** The `count` tickers for this run: the list is walked in order, twice a day, so every company is covered every few days. */
+export function eodhdNewsTickers(now: Date, count: number): string[] {
+  const all = US_EQUITIES.split(" "); if (!count) return [];
+  const slot = Math.floor(now.getTime() / (12 * 36e5)); const start = (slot * count) % all.length;
+  return Array.from({ length: Math.min(count, all.length) }, (_, i) => all[(start + i) % all.length]);
+}
+export async function eodhdNews(since: Date, now: Date, count = 4): Promise<NewsItem[]> {
+  const eod = createEodhd(); const out: NewsItem[] = []; const from = since.toISOString().slice(0, 10); const errs: string[] = [];
+  for (const tk of eodhdNewsTickers(now, count)) {
+    try {
+      for (const a of await eod.news({ s: `${tk}.US`, from, limit: 10 })) {
+        const syms = (a.symbols ?? []).filter((x) => x.endsWith(".US")).map((x) => x.slice(0, -3));
+        const it = item({ t: a.date, title: a.title, sum: a.content, url: a.link, src: host(a.link), via: "eodhd", tk: [tk, ...syms.slice(0, 5)], cc: [], sent: typeof a.sentiment?.polarity === "number" ? Number(a.sentiment.polarity.toFixed(3)) : null });
+        if (it && Date.parse(it.t) >= since.getTime()) out.push(it);
+      }
+    } catch (e) { errs.push(`${tk}: ${(e as Error).message}`); }
+  }
+  if (!out.length && errs.length) throw new Error(errs.join("; "));
   return out;
 }
 

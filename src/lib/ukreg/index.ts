@@ -26,6 +26,14 @@ export function companyNumber(raw: string): string | null {
   return /^[A-Z]{2}\d{6}$/.test(n) ? n : null;
 }
 
+/** Officer id from an appointments link ("/officers/<id>/appointments"), or null. */
+export function officerId(link: unknown): string | null {
+  const m = /^\/officers\/([A-Za-z0-9_-]{6,64})\/appointments/.exec(String(link ?? "")); return m ? m[1] : null;
+}
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** Companies House shows only the month and year of birth. */
+const born = (v: unknown) => { const x = o(v); const m = Number(x.month), y = Number(x.year); return y ? `${m >= 1 && m <= 12 ? MON[m - 1] + " " : ""}${y}` : null; };
+
 // --- cache ------------------------------------------------------------------------
 const CACHE = new Map<string, { at: number; v: unknown }>();
 const TTL = 60 * 60e3;
@@ -68,7 +76,7 @@ export async function companyDetail(number: string) {
       },
       officers: off ? {
         active: Number(off.active_count) || 0, resigned: Number(off.resigned_count) || 0,
-        items: a(off.items).map((x) => ({ name: String(x.name ?? ""), role: humanize(x.officer_role), appointed: s(x.appointed_on), resigned: s(x.resigned_on), nationality: s(x.nationality), occupation: s(x.occupation), country: s(x.country_of_residence) })),
+        items: a(off.items).map((x) => ({ id: officerId(o(o(x.links).officer).appointments), name: String(x.name ?? ""), role: humanize(x.officer_role), appointed: s(x.appointed_on), resigned: s(x.resigned_on), nationality: s(x.nationality), occupation: s(x.occupation), country: s(x.country_of_residence) })),
       } : null,
       psc: psc ? a(psc.items).map((x) => ({ name: String(x.name ?? ""), kind: humanize(x.kind), natures: a(x.natures_of_control).map(humanize), notified: s(x.notified_on), ceased: s(x.ceased_on), nationality: s(x.nationality), country: s(x.country_of_residence) })) : null,
       filings: fil ? a(fil.items).map((x) => {
@@ -83,3 +91,28 @@ export async function companyDetail(number: string) {
   });
 }
 export type UkCompany = Awaited<ReturnType<typeof companyDetail>>;
+
+export type UkOfficerHit = { id: string; name: string; born: string | null; appointments: number | null; address: string; description: string };
+/** Search for officers (directors, secretaries, LLP members) by name. */
+export async function searchOfficers(q: string, n = 20): Promise<{ total: number; items: UkOfficerHit[] }> {
+  return cached(`o:${q.toLowerCase()}:${n}`, async () => {
+    const r = await createCompaniesHouse().searchOfficers(q, n) as Obj;
+    return {
+      total: Number(r.total_results) || 0,
+      items: a(r.items).flatMap((x) => { const id = officerId(o(x.links).self); return id ? [{ id, name: String(x.title ?? ""), born: born(x.date_of_birth), appointments: x.appointment_count == null ? null : Number(x.appointment_count), address: s(x.address_snippet) ?? address(x.address), description: String(x.description ?? "") }] : []; }),
+    };
+  });
+}
+
+/** One officer's appointments across companies, newest first. */
+export async function officerAppointments(id: string) {
+  return cached(`a:${id}`, async () => {
+    const r = await createCompaniesHouse().appointments(id, 50) as Obj;
+    const items = a(r.items).map((x) => {
+      const to = o(x.appointed_to);
+      return { number: s(to.company_number), company: String(to.company_name ?? ""), status: s(to.company_status), role: humanize(x.officer_role), appointed: s(x.appointed_on ?? x.appointed_before), resigned: s(x.resigned_on), occupation: s(x.occupation), nationality: s(x.nationality), country: s(x.country_of_residence), address: address(x.address) };
+    }).sort((p, q) => Number(!!p.resigned) - Number(!!q.resigned) || String(q.appointed ?? "").localeCompare(String(p.appointed ?? "")));
+    return { id, name: String(r.name ?? ""), born: born(r.date_of_birth), total: Number(r.total_results) || items.length, active: items.filter((x) => !x.resigned).length, items, link: `${FIND}/officers/${id}/appointments` };
+  });
+}
+export type UkOfficer = Awaited<ReturnType<typeof officerAppointments>>;

@@ -22,13 +22,13 @@ import { envKey } from "@/lib/providers/http";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
 import { formDFiling, formDIndex, type FormD } from "./formd";
 import { boc, boe, cftcCot, estr, nyFed, treasuryCurve } from "./rates";
-import { bisCpi, bisPolicyRates, dividendCalendar, ecb, econCalendar, eiaInventories, fredReleaseCalendar, icsCalendars, ipoCalendar, oecdCpi, pinkSheet, smardPower, treasuryAuctions, worldBank, type CalEvent, type InstSeries, type MacroSeries } from "./sources";
+import { bisCpi, bisPolicyRates, dividendCalendar, ecb, econCalendar, eiaInventories, fredReleaseCalendar, icsCalendars, ipoCalendar, oecdCpi, pinkSheet, smardPower, splitCalendar, treasuryAuctions, worldBank, type CalEvent, type InstSeries, type MacroSeries } from "./sources";
 
 export const GEN = "macro-sync";
 /** Countries the app knows (Country data hub), app codes. */
 export const MACRO_COUNTRIES = "AF AO AR AT AU BD BE BF BJ BR BW CA CD CG CH CI CL CM CN CO CV CZ DE DK DZ EG ES ET EU FI FR GA GH GM GN GR HK HU ID IE IL IN IQ IR IT JM JO JP KE KR KW KZ LB LK LR LY MA MG ML MU MW MX MY MZ NA NE NG NL NO NZ OM PE PH PK PL PT QA RO RU RW SA SD SE SG SL SN SS TG TH TN TR TW TZ UA AE UG UK US UY VE VN ZA ZM ZW".split(" ");
 
-export type MacroSourceId = "worldbank" | "bis" | "ecb" | "oecd" | "fred-calendar" | "treasury" | "econ-calendar" | "dividends" | "ipos" | "sec-formd" | "bis-cpi" | "release-calendars" | "commodities" | "power" | "eia" | "treasury-curve" | "nyfed" | "boe" | "boc" | "estr" | "cftc";
+export type MacroSourceId = "worldbank" | "bis" | "ecb" | "oecd" | "fred-calendar" | "treasury" | "econ-calendar" | "dividends" | "splits" | "ipos" | "sec-formd" | "bis-cpi" | "release-calendars" | "commodities" | "power" | "eia" | "treasury-curve" | "nyfed" | "boe" | "boc" | "estr" | "cftc";
 type State = Record<string, unknown>;
 type Fetched = { series?: MacroSeries[]; events?: CalEvent[]; companies?: FormD[]; instruments?: InstSeries[]; state?: State };
 const intEnv = (k: string, d: number) => { const n = Number(process.env[k]); return process.env[k] && Number.isFinite(n) && n >= 0 ? n : d; };
@@ -71,7 +71,8 @@ export const MACRO_SOURCES: { id: MacroSourceId; name: string; needs?: string; g
   { id: "fred-calendar", name: "FRED release calendar", needs: "FRED_API_KEY", run: async (now) => ({ events: await fredReleaseCalendar(now) }) },
   { id: "treasury", name: "U.S. Treasury auctions", run: async () => ({ events: await treasuryAuctions() }) },
   { id: "econ-calendar", name: "Economic calendar (FMP / EODHD)", needs: "FMP_API_KEY|EODHD_API_KEY", run: async (now) => ({ events: await econCalendar(now, new Set(MACRO_COUNTRIES)) }) },
-  { id: "dividends", name: "Dividend calendar (FMP)", needs: "FMP_API_KEY", run: async (now) => ({ events: await dividendCalendar(now) }) },
+  { id: "dividends", name: "Dividend calendar (FMP / EODHD)", needs: "FMP_API_KEY|EODHD_API_KEY", run: async (now) => ({ events: await dividendCalendar(now) }) },
+  { id: "splits", name: "Stock splits (EODHD)", needs: "EODHD_API_KEY", run: async (now) => ({ events: await splitCalendar(now) }) },
   { id: "ipos", name: "IPO calendar (FMP / EODHD)", needs: "FMP_API_KEY|EODHD_API_KEY", run: async (now) => ({ events: await ipoCalendar(now) }) },
   { id: "sec-formd", name: "SEC Form D private placements", needs: "SEC_USER_AGENT", run: secFormD },
   { id: "bis-cpi", name: "BIS consumer prices", run: async (now) => ({ series: await bisCpi(`${now.getUTCFullYear() - 10}-01`) }) },
@@ -89,7 +90,7 @@ export const MACRO_SOURCES: { id: MacroSourceId; name: string; needs?: string; g
 ];
 export type MacroGroup = "core" | "rates";
 /** Which source writes each kind of calendar event (by id prefix), so a source that answered can retire its own stale events. */
-const EVENT_SOURCE: [string, MacroSourceId][] = [["auto-fred-", "fred-calendar"], ["auto-ust-", "treasury"], ["auto-eco-", "econ-calendar"], ["auto-div-", "dividends"], ["auto-ipo-", "ipos"], ["auto-estat-", "release-calendars"], ["auto-bls-", "release-calendars"]];
+const EVENT_SOURCE: [string, MacroSourceId][] = [["auto-fred-", "fred-calendar"], ["auto-ust-", "treasury"], ["auto-eco-", "econ-calendar"], ["auto-div-", "dividends"], ["auto-spl-", "splits"], ["auto-ipo-", "ipos"], ["auto-estat-", "release-calendars"], ["auto-bls-", "release-calendars"]];
 
 export type MacroReport = {
   date: string; dryRun: boolean; store: string;

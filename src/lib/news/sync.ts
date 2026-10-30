@@ -14,10 +14,10 @@ import "server-only";
 import { envKey } from "@/lib/providers/http";
 import { scrub } from "@/lib/providers";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
-import { canonicalUrl, currentsNews, dealNews, marketauxNews, newsApiAiNews, officialNews, type NewsItem, type NewsProvider } from "./sources";
+import { alphaVantageNews, canonicalUrl, currentsNews, eodhdNews, dealNews, marketauxNews, newsApiAiNews, officialNews, type NewsItem, type NewsProvider } from "./sources";
 
-const ENVS: Record<Exclude<NewsProvider, "official" | "deals">, string> = { marketaux: "MARKETAUX_API_KEY", newsapi: "NEWSAPI_AI_KEY", currents: "CURRENTS_API_KEY" };
-const LABEL: Record<NewsProvider, string> = { marketaux: "Marketaux", newsapi: "NewsAPI.ai", currents: "Currents", official: "Official sources", deals: "Startup and deal news" };
+const ENVS: Record<Exclude<NewsProvider, "official" | "deals">, string> = { marketaux: "MARKETAUX_API_KEY", newsapi: "NEWSAPI_AI_KEY", currents: "CURRENTS_API_KEY", alphavantage: "ALPHAVANTAGE_API_KEY", eodhd: "EODHD_API_KEY" };
+const LABEL: Record<NewsProvider, string> = { marketaux: "Marketaux", newsapi: "NewsAPI.ai", currents: "Currents", alphavantage: "Alpha Vantage", eodhd: "EODHD", official: "Official sources", deals: "Startup and deal news" };
 const COL = "mktnews";
 const DAY = 864e5;
 
@@ -33,6 +33,8 @@ export type NewsSyncOptions = {
   perDay?: number;
   /** Marketaux general-news requests per run. Default MARKETAUX_PAGES or 3. */
   marketauxPages?: number;
+  /** Tracked U.S. companies whose EODHD news is fetched per run (rotating). Default EODHD_NEWS_TICKERS or 4. */
+  eodhdTickers?: number;
   /** Override which providers count as configured (tests). */
   providers?: NewsProvider[];
 };
@@ -83,6 +85,8 @@ export async function runNewsSync(opts: NewsSyncOptions = {}): Promise<NewsSyncR
     marketaux: () => marketauxNews(since, opts.marketauxPages ?? intEnv("MARKETAUX_PAGES", 3)),
     newsapi: () => newsApiAiNews(since),
     currents: () => currentsNews(since),
+    alphavantage: () => alphaVantageNews(since),
+    eodhd: () => eodhdNews(since, now, opts.eodhdTickers ?? intEnv("EODHD_NEWS_TICKERS", 4)),
     official: () => officialNews(since),
     deals: () => dealNews(since),
   };

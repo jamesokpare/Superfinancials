@@ -3,7 +3,7 @@
 // pruning, provider errors, dry runs and idempotent re-runs.
 // Run: npm test
 import { runNewsSync } from "../src/lib/news/sync";
-import { DEAL_FEEDS, OFFICIAL_FEEDS, dealAmount, parseFeed } from "../src/lib/news/sources";
+import { DEAL_FEEDS, OFFICIAL_FEEDS, alphaVantageNews, avTime, dealAmount, eodhdNews, eodhdNewsTickers, parseFeed } from "../src/lib/news/sources";
 import { memoryStore } from "../src/lib/market/store";
 
 for (const k of ["MARKETAUX_API_KEY", "NEWSAPI_AI_KEY", "CURRENTS_API_KEY"]) process.env[k] = "test-" + k;
@@ -116,6 +116,34 @@ const ds = memoryStore(); const rd = await runNewsSync({ store: ds, now: NOW, pr
 const di = (await ds.list("mktnews")).filter((d) => d.id.startsWith("day-")).flatMap((d) => (d.data.items as { via: string; src: string; sum: string; title: string }[]));
 t("deal feeds: funding stories only, headline and link kept, publisher text not stored, amount read from the headline", rd.added === 2 && di.every((x) => x.via === "deals" && x.src === "TechCabal" && !/article text/.test(x.sum)) && di.some((x) => x.sum === "Reported amount: US$110m.") && di.some((x) => x.sum === "Reported amount: €280m."), { rd, di });
 t("deal amounts", dealAmount("raises US$1.2bn") === "US$1.2bn" && dealAmount("₦2 billion round") === "₦2bn" && dealAmount("PR2 launch") === null && dealAmount("$5 coffee") === null && dealAmount("KSh 500m") === "KSh500m");
+globalThis.fetch = _f;
+
+// --- Alpha Vantage and EODHD news (called directly with their own fake responses) ---
+process.env.ALPHAVANTAGE_API_KEY = "test-av"; process.env.EODHD_API_KEY = "test-eod";
+const seenQ: string[] = [];
+globalThis.fetch = (async (input: string | URL | Request) => {
+  const url = new URL(input instanceof Request ? input.url : String(input)); seenQ.push(url.hostname + url.pathname + url.search);
+  const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "content-type": "application/json" } });
+  if (url.hostname === "www.alphavantage.co") return json({ items: "2", feed: [
+    { title: "Nvidia leads chip rally", url: "https://www.benzinga.com/nvda-rally", time_published: "20261029T143000", summary: "Chipmakers rose.", banner_image: "https://img.example/nv.png", source: "Benzinga", overall_sentiment_score: 0.41,
+      ticker_sentiment: [{ ticker: "NVDA", relevance_score: "0.81", ticker_sentiment_score: "0.5" }, { ticker: "AMD", relevance_score: "0.1" }, { ticker: "CRYPTO:BTC", relevance_score: "0.9" }] },
+    { title: "Bad time", url: "https://x.example/a", time_published: "nonsense" },
+  ] });
+  if (url.hostname === "eodhd.com" && url.pathname === "/api/news") {
+    const s = url.searchParams.get("s");
+    if (s === "BAD.US") return json({ error: "boom" }, 500);
+    return json([{ date: "2026-10-29T10:00:00+00:00", title: `${s} wins contract`, content: "A long article body about the contract.", link: `https://news.example/${s}`, symbols: [s, "MSFT.US", "VOD.LSE"], tags: [], sentiment: { polarity: -0.25, neg: 0.2, neu: 0.7, pos: 0.1 } },
+      { date: "2026-10-20T10:00:00+00:00", title: "Too old", content: "", link: "https://news.example/old", symbols: [s] }]);
+  }
+  return json({ error: "unexpected " + url.hostname }, 500);
+}) as typeof fetch;
+t("Alpha Vantage times", avTime("20261029T143000") === "2026-10-29T14:30:00Z" && avTime("x") === null);
+const av = await alphaVantageNews(new Date("2026-10-28T16:45:00Z"));
+t("Alpha Vantage news: sentiment, relevant tickers only, bad rows skipped", av.length === 1 && av[0].sent === 0.41 && JSON.stringify(av[0].tk) === '["NVDA"]' && av[0].via === "alphavantage" && av[0].src === "Benzinga" && seenQ.some((q) => q.includes("function=NEWS_SENTIMENT") && q.includes("time_from=20261028T1645") && q.includes("sort=LATEST")), { av, seenQ });
+const rot = eodhdNewsTickers(NOW, 4), rot2 = eodhdNewsTickers(new Date(NOW.getTime() + 12 * 36e5), 4);
+t("EODHD news tickers rotate twice a day", rot.length === 4 && rot2.length === 4 && rot[0] !== rot2[0] && eodhdNewsTickers(NOW, 0).length === 0, { rot, rot2 });
+const eo = await eodhdNews(new Date("2026-10-28T16:45:00Z"), NOW, 2);
+t("EODHD news: polarity as sentiment, U.S. symbols tagged, old items dropped", eo.length === 2 && eo[0].sent === -0.25 && eo[0].tk.includes(eodhdNewsTickers(NOW, 2)[0]) && eo[0].tk.includes("MSFT") && !eo[0].tk.includes("VOD") && eo[0].via === "eodhd", eo);
 globalThis.fetch = _f;
 
 console.log(fails ? `\n${fails} news-sync test(s) failed` : "\nAll news-sync tests passed");

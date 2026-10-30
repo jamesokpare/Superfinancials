@@ -11,7 +11,7 @@ import { memoryStore } from "../src/lib/market/store";
 process.env.FRED_API_KEY = "test-fred"; process.env.FMP_API_KEY = "test-fmp"; process.env.EODHD_API_KEY = "test-eod"; process.env.EIA_API_KEY = "test-eia"; process.env.MACRO_RETRY_MS = "5"; process.env.MACRO_GAP_MS = "0";
 process.env.SEC_USER_AGENT = "Superfinancials test ops@example.com";
 const NOW = new Date("2026-10-29T05:20:00Z");
-let oecdDown = false; let fmpPremium = false; let oecdFlaky = 1; const oecdCalls: string[] = [];
+let oecdDown = false; let fmpPremium = false; let fmpDivDown = false; let oecdFlaky = 1; const oecdCalls: string[] = [];
 const IDX = `Description:           Daily Index of EDGAR Dissemination Feed by Form Type
 Last Data Received:    October 27, 2026
 
@@ -105,6 +105,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     return new Response("not found", { status: 404 });
   }
   if (url.hostname === "financialmodelingprep.com") {
+    if (fmpDivDown && url.pathname === "/stable/dividends-calendar") return json({ "Error Message": "Premium Query Parameter: special endpoint" });
     if (fmpPremium && url.pathname !== "/stable/dividends-calendar") return json({ "Error Message": "Premium Query Parameter: special endpoint" });
     if (url.pathname === "/stable/economic-calendar") return json([
       { date: "2026-11-12 13:30:00", country: "US", event: "CPI YoY (Oct)", currency: "USD", previous: 3.0, estimate: 3.1, actual: null, impact: "High", unit: "%" },
@@ -117,6 +118,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   }
   if (url.hostname === "eodhd.com") {
     if (url.pathname === "/api/economic-events") return json([{ type: "Unemployment Rate", period: "Oct", country: "US", date: "2026-11-06 13:30:00", previous: 4.3, estimate: 4.3, actual: null }, { type: "No consensus", country: "US", date: "2026-11-06 13:30:00", estimate: null }]);
+    if (url.pathname === "/api/calendar/splits") return json({ type: "Splits", from: "x", to: "y", splits: [{ code: "NVDA.US", split: "4.000000/1.000000", date: "2026-11-20", optionable: "Y" }, { code: "TSLA.US", split: "1.000000/5.000000", date: "2026-11-21" }, { code: "ZZZZ.US", split: "2/1", date: "2026-11-20" }, { code: "VOD.LSE", split: "2/1", date: "2026-11-20" }] });
+    if (url.pathname === "/api/calendar/dividends") return json({ data: [{ code: "MSFT.US", date: "2026-11-19", recordDate: "2026-11-20", paymentDate: "2026-12-11", value: 0.91, period: "Quarterly" }, { code: "ZZZZ.US", date: "2026-11-19", value: 1 }, { code: "SHEL.LSE", date: "2026-11-19", value: 1 }], meta: { total: 3, limit: 1000, offset: 0 } });
     if (url.pathname === "/api/calendar/ipos") return json({ ipos: [{ code: "BETA.US", name: "Beta Health", exchange: "NYSE", start_date: "2026-11-07", price_from: 10, price_to: 12, shares: 5000000, deal_type: "Expected" }] });
   }
   return json({ error: "unexpected host " + url.hostname }, 500);
@@ -157,7 +160,7 @@ const ten = C.get("auto-ust-2026-11-10-91282CNX5");
 t("Treasury auctions: title, amount, category", ten?.title === "U.S. Treasury 10-Year Note auction (reopening)" && /US\$42\.0 bn/.test(String(ten?.notes)) && ten?.cat === "auc" && ten?.imp === 2, ten);
 t("calendar: owner events kept; stale and rescheduled auto events removed", C.has("desk-1") && !C.has("auto-ust-2026-11-03-OLD") && !C.has("auto-fred-10-2026-01-01") && r.events.removed === 2, [...C.keys()]);
 const meta = (await store.list("macrosync"))[0]?.data;
-t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total + r.funds.total && /21 of 21 sources/.test(String(meta?.note)), meta);
+t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total + r.funds.total && /22 of 22 sources/.test(String(meta?.note)), meta);
 
 const cpi = C.get("auto-eco-2026-11-12-us-cpi-yoy-oct");
 t("economic calendar: consensus, prior, time; low-importance and unknown countries dropped", cpi?.cons === "3.1" && cpi?.prior === "3" && cpi?.actual === "" && cpi?.time === "13:30" && cpi?.imp === 3 && ![...C.keys()].some((k) => /minor-survey|unknown-place/.test(k)), cpi);
@@ -219,6 +222,13 @@ fmpPremium = true;
 const fb = await runMacroSync({ store: memoryStore(), now: NOW, only: ["econ-calendar", "ipos", "dividends"] });
 t("FMP plan error → EODHD answers the economic and IPO calendars", fb.sources["econ-calendar"].events === 1 && fb.sources.ipos.events === 1 && fb.sources.dividends.events === 2, fb.sources);
 fmpPremium = false;
+fmpDivDown = true;
+const dv = await runMacroSync({ store: memoryStore(), now: NOW, only: ["dividends", "splits"] });
+const dvs = memoryStore(); await runMacroSync({ store: dvs, now: NOW, only: ["dividends", "splits"] }); const DV = new Map((await dvs.list("adm_cal")).map((d) => [d.id, d.data]));
+t("FMP dividend error → EODHD dividend calendar, tracked U.S. names only", dv.sources.dividends.events === 1 && /Record date 2026-11-20, payment 2026-12-11, quarterly/.test(String(DV.get("auto-div-2026-11-19-msft")?.notes)) && JSON.stringify(DV.get("auto-div-2026-11-19-msft")?.ids) === '["EQ.MSFT"]', [...DV]);
+const sp = DV.get("auto-spl-2026-11-20-nvda"), rs = DV.get("auto-spl-2026-11-21-tsla");
+t("splits: ratio, reverse splits, tracked U.S. names only, linked", sp?.title === "NVDA 4-for-1 stock split" && sp.cat === "spl" && JSON.stringify(sp.ids) === '["EQ.NVDA"]' && rs?.title === "TSLA 1-for-5 reverse stock split" && dv.sources.splits.events === 2, { sp, rs, src: dv.sources.splits });
+fmpDivDown = false;
 const gs = memoryStore(); await runMacroSync({ store: gs, now: NOW, group: "core", only: undefined }); const gr = await runMacroSync({ store: gs, now: NOW, group: "rates" });
 const gm = (await gs.list("macrosync"))[0]?.data as { sources?: Record<string, unknown> };
 t("cron groups: the rates run covers only rate sources; the summary keeps the core run's results", Object.keys(gr.sources).sort().join() === "boc,boe,cftc,estr,nyfed,treasury-curve" && "oecd" in (gm.sources ?? {}) && "nyfed" in (gm.sources ?? {}), Object.keys(gm.sources ?? {}));

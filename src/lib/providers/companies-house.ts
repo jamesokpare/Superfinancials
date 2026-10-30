@@ -26,6 +26,8 @@ export function createCompaniesHouse(apiKey = requireKey(NAME, ENV), opts: Fetch
     get,
     searchCompanies: (q: string, itemsPerPage = 20, startIndex = 0) => get<ChSearch>("/search/companies", { q, items_per_page: itemsPerPage, start_index: startIndex }),
     searchOfficers: (q: string, itemsPerPage = 20) => get("/search/officers", { q, items_per_page: itemsPerPage }),
+    /** Every company an officer is or was appointed to (officer ids come from search results and company officer lists). */
+    appointments: (officerId: string, itemsPerPage = 50) => get(`/officers/${encodeURIComponent(officerId)}/appointments`, { items_per_page: itemsPerPage }),
     company: (number: string) => get<ChCompany>(co(number)),
     officers: (number: string, itemsPerPage = 35) => get(`${co(number)}/officers`, { items_per_page: itemsPerPage }),
     filingHistory: (number: string, category?: string, itemsPerPage = 25) => get(`${co(number)}/filing-history`, { category, items_per_page: itemsPerPage }),
