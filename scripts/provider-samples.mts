@@ -10,6 +10,8 @@
 // credentials. Long lists are cut to their first two items and long strings to 300
 // characters, so the files stay small. The log shows each response's structure.
 // Uses about 2 Alpha Vantage calls and ~10 EODHD calls.
+// The official-source probes (surveys, filings, SEC data sets, Nigeria, pensions) run the app's own readers on
+// one live response and save what they read, so a format mismatch shows up as an empty or odd result.
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createAfricaApi } from "../src/lib/providers/africa-api";
 import { createAlphaVantage } from "../src/lib/providers/alphavantage";
@@ -19,6 +21,14 @@ import { createMyStocksAfrica } from "../src/lib/providers/mystocks-africa";
 import { createNgxPulse } from "../src/lib/providers/ngx-pulse";
 import { envKey } from "../src/lib/providers/http";
 import { scrub } from "../src/lib/providers";
+import { contactUA, type MacroSeries } from "../src/lib/macro/sources";
+import { boeImpliedInflation, ecbSpf, ecSentiment, nbsPmi, oecdCli } from "../src/lib/macro/surveys";
+import { fxForwardInputs, vixLevels } from "../src/lib/macro/derived";
+import { edinet, openDart, xbrlFilings } from "../src/lib/filings/intl";
+import { fetchFrame } from "../src/lib/sec/frames";
+import { fetchDataset, pastQuarters, readDataset } from "../src/lib/sec/datasets";
+import { cbnMoneyMarket, dmoAuctions } from "../src/lib/africa/ngdebt";
+import { calpers, oregon, wsib } from "../src/lib/pensions/index";
 
 for (const f of [".env.local", ".env"]) if (existsSync(f)) process.loadEnvFile(f);
 const only = process.argv.find((a) => a.startsWith("--only"))?.split("=")[1]?.split(",").map((s) => s.trim()).filter(Boolean);
@@ -45,6 +55,11 @@ function shape(x: unknown, path = "", out: string[] = [], depth = 0): string[] {
 /** A plain GET returning JSON (for endpoints the client libraries don't cover). */
 async function raw(url: string): Promise<unknown> { const r = await fetch(url, { signal: AbortSignal.timeout(30_000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }
 type Probe = [provider: string, endpoint: string, env: string | null, fn: () => Promise<unknown>];
+/** What a reader made of a live response: series → code, count, first and last point; lists → count and first items. */
+const series = (xs: MacroSeries[]) => ({ count: xs.length, series: xs.slice(0, 40).map((x) => ({ cc: x.cc, code: x.code, n: x.points.length, first: x.points[0], last: x.points.at(-1) })) });
+const list = (xs: unknown[]) => ({ count: xs.length, first: xs.slice(0, 3) });
+const pts = (o: Record<string, { t: string; v: number }[] | undefined>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { n: v?.length ?? 0, last: v?.at(-1) }]));
+const ua = () => { const u = contactUA(); if (!u) throw new Error("SEC_USER_AGENT must be \"Name contact@domain\""); return u; };
 const probes: Probe[] = [
   // Mansa API (NGX = "nigeria")
   ["mansa", "exchange", "MANSA_API_KEY", () => createMansa().exchange("nigeria")],
@@ -95,12 +110,38 @@ const probes: Probe[] = [
   ["eodhd", "cds-spreads", "EODHD_API_KEY", () => raw(`https://eodhd.com/api/credit-risk/sovereign/cds-spreads?api_token=${envKey("EODHD_API_KEY")}&fmt=json`)],
   ["eodhd", "proxy-SRUUF", "EODHD_API_KEY", () => createEodhd().eod("SRUUF.US", { from: day(-7), period: "d", order: "a" })],
   // FRED: the copyright notes of every series the app shows (restricted ones are skipped by the sync)
-  ...["T5YIE", "T10YIE", "T5YIFR", "DCPF3M", "DTB3", "SOFR", "GACDFSA066MSFRBPHI", "GACDISA066MSFRBNY", "BACTSAMFRBDAL", "USREC"].map((id): Probe => ["fred", `notes-${id}`, "FRED_API_KEY", async () => {
+  ...["EXPINF1YR", "EXPINF10YR", "T5YIE", "T10YIE", "T5YIFR", "DCPF3M", "DTB3", "SOFR", "GACDFSA066MSFRBPHI", "GACDISA066MSFRBNY", "BACTSAMFRBDAL", "USREC"].map((id): Probe => ["fred", `notes-${id}`, "FRED_API_KEY", async () => {
     const r = await raw(`https://api.stlouisfed.org/fred/series?series_id=${id}&file_type=json&api_key=${envKey("FRED_API_KEY")}`) as { seriess?: { title?: string; notes?: string; last_updated?: string }[] };
     const x = r.seriess?.[0] ?? {}; return { title: x.title, last_updated: x.last_updated, notes: x.notes };
   }]),
   // Cboe index history files (display terms to be checked)
   ["cboe", "VIX_History", null, async () => { const t = await (await fetch("https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv", { signal: AbortSignal.timeout(30_000) })).text(); const l = t.trim().split("\n"); return { header: l[0], last: l.slice(-2), rows: l.length }; }],
+  // Surveys and expectations (no key): the macro sync's own readers on live data
+  ["oecd", "cli-bci-cci", null, async () => series(await oecdCli(`${y0 - 1}-01`))],
+  ["eurostat", "ec-sentiment", null, async () => series(await ecSentiment(`${y0 - 1}-01`))],
+  ["ecb", "spf", null, async () => series(await ecbSpf(y0 - 2))],
+  ["boe", "implied-inflation-latest", null, async () => series((await boeImpliedInflation(new Date(), { boeInflSeeded: true })).series)],
+  ["nbs", "pmi-releases", null, async () => series(await nbsPmi(2))],
+  ["ecb-boc", "fx-forward-inputs", null, async () => pts(await fxForwardInputs(new Date()) as Record<string, { t: string; v: number }[]>)],
+  ["cboe", "vix-curve-files", null, async () => pts(await vixLevels(new Date()) as Record<string, { t: string; v: number }[]>)],
+  // International filings
+  ["edinet", "documents", "EDINET_API_KEY", async () => list(await edinet(new Date(), 1))],
+  ["opendart", "list", "OPENDART_API_KEY", async () => list(await openDart(new Date(), 2, 1))],
+  ["xbrl", "filings-GB", null, async () => list(await xbrlFilings(["GB"], 5))],
+  // SEC XBRL frames and the Reg CF / Reg A quarterly data sets
+  ["sec", "frame-EPS-diluted", "SEC_USER_AGENT", async () => list(await fetchFrame({ tax: "us-gaap", concept: "EarningsPerShareDiluted", unit: "USD-per-shares", period: `CY${y0}Q1` }, ua()))],
+  ["sec", "frame-revenue", "SEC_USER_AGENT", async () => list(await fetchFrame({ tax: "us-gaap", concept: "Revenues", unit: "USD", period: `CY${y0 - 1}` }, ua()))],
+  ...(["cf", "rega"] as const).map((k): Probe => ["sec", `dataset-${k}`, "SEC_USER_AGENT", async () => {
+    for (const q of pastQuarters(new Date(), 3)) { const z = await fetchDataset(k, q, ua()); if (z) return { quarter: q, ...list(readDataset(k, z)) }; }
+    throw new Error("no data set file found for the last 3 quarters");
+  }]),
+  // Nigeria: CBN money-market indicators and DMO bond auction results (PDF)
+  ["cbn", "money-market", null, async () => series((await cbnMoneyMarket(new Date(), 1)).map((x) => ({ ...x, cc: "NG" }) as unknown as MacroSeries))],
+  ["dmo", "bond-auctions", null, async () => { const r = await dmoAuctions(new Set(), 1); return { listed: r.listed, tried: r.tried, ...list(r.auctions) }; }],
+  // Public pension fund reports
+  ["pensions", "calpers", null, async () => list(await calpers())],
+  ["pensions", "wsib", null, async () => list(await wsib(new Date()))],
+  ["pensions", "oregon", null, async () => list(await oregon())],
   // IMF World Economic Outlook (no key)
   ["imf", "weo-NGDP_RPCH", null, async () => {
     const r = await fetch(`https://www.imf.org/external/datamapper/api/v1/NGDP_RPCH?periods=${y0},${y0 + 1}`, { headers: { "user-agent": "Superfinancials data sync (https://github.com/jamesokpare/Superfinancials)" }, signal: AbortSignal.timeout(30_000) });

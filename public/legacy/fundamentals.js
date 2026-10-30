@@ -144,3 +144,66 @@ async function fdConnect() {
   } catch (e) { if (FDS.st !== 'cached') FDS.st = 'off'; }
 }
 setTimeout(fdConnect, 0);
+
+/* ---------- SEC XBRL frames: EPS and revenue for U.S. companies without other fundamentals ----------
+   The server's SEC sync (src/lib/sec/sync.ts) stores EPS and revenue for every U.S.
+   filer with a ticker, from SEC EDGAR's XBRL frames (public domain), in
+   secframes/t-<first letter of the ticker>. When a U.S. company page opens and the
+   `fund` collection has nothing for it, that one shard is read and the company gets
+   reported revenue and EPS (latest 8 quarters, 3 fiscal years) with SEC credited.
+   Figures from a fundamentals provider always win. */
+const SFX = { m: new Map(), shards: new Map(), loading: new Set() };
+FD_SRC.sec = 'SEC EDGAR XBRL (public domain)';
+const sfxShard = tk => /^[A-Z]/.test(tk) ? tk[0] : '0';
+/** A stored-fundamentals record (the shape fund() reads) from one company's SEC figures. */
+function sfxRecord(id, co, checked) {
+  const q = (co.q || []).filter(r => r.e).slice().sort((a, b) => a.e < b.e ? 1 : -1), fy = (co.fy || []).filter(r => r.e).slice().sort((a, b) => a.e < b.e ? -1 : 1);
+  if (!q.length && !fy.length) return null;
+  // TTM from the last four quarters when they are consecutive (about 91 days apart) and complete; else the latest fiscal year.
+  const q4 = q.slice(0, 4); const consec = q4.length === 4 && q4.every((r, i) => !i || Math.abs((Date.parse(q4[i - 1].e) - Date.parse(r.e)) / 864e5 - 91) <= 10);
+  const sum = k => q4.every(r => r[k] != null) ? q4.reduce((a, r) => a + r[k], 0) : null;
+  const lastFy = fy[fy.length - 1] || {}; const ttmOk = consec && (sum('rev') != null || sum('eps') != null);
+  const prevFy = fy[fy.length - 2];
+  return {
+    type: 'fund', id, kind: fy.length >= 2 ? 'sec' : 'snapshot', src: 'sec', ccy: 'USD', asOf: checked, nextEarn: null,
+    ttm: ttmOk ? { rev: sum('rev'), eps: sum('eps'), basis: 'TTM' } : { rev: lastFy.rev ?? null, eps: lastFy.eps ?? null, basis: 'FY' },
+    bs: {}, shares: co.sh && co.sh[1] > 0 ? co.sh[1] : null,
+    growth: prevFy && prevFy.rev && lastFy.rev != null ? (lastFy.rev / prevFy.rev - 1) * 100 : null,
+    fy: fy.map(r => ({ y: +r.e.slice(0, 4), end: r.e, rev: r.rev ?? null, eps: r.eps ?? null })),
+    secQ: q, secCik: co.cik,
+  };
+}
+const sfxEligible = o => o && o.type === 'equity' && o.tk && (o.ccy || 'USD') === 'USD' && (o.mkt === 'US' || o.country === 'US' || o.cc === 'US');
+/** SEC's ticker spelling: class shares use a dash (BRK-B). */
+const sfxTk = o => String(o.tk).toUpperCase().replace(/\./g, '-');
+/** Puts SEC records in for app companies without provider fundamentals. */
+function sfxApply() {
+  let n = 0;
+  for (const [id, R] of SFX.m) if (!FDS.m.has(id) || FDS.m.get(id).src === 'sec') { FDS.m.set(id, R); if (typeof FUND !== 'undefined') FUND.delete(id); n++; }
+  return n;
+}
+async function sfxLoad(id) {
+  const o = typeof BY !== 'undefined' ? BY[id] : null; if (!sfxEligible(o)) return;
+  const sh = sfxShard(sfxTk(o)); if (SFX.shards.has(sh) || SFX.loading.has(sh)) return;
+  SFX.loading.add(sh);
+  try {
+    const db = window.claude && typeof window.claude.use === 'function' ? await withTimeout(window.claude.use('db'), 10000) : null; if (!db) return;
+    const snap = await withTimeout(db.collection('secframes').doc('t-' + sh).get(), 15000);
+    const doc = snap && snap.exists ? snap.data() : null; SFX.shards.set(sh, doc ? doc.checked : '');
+    if (!doc || !doc.items) return;
+    for (const x of Object.values(BY)) { if (!sfxEligible(x) || sfxShard(sfxTk(x)) !== sh) continue; const co = doc.items[sfxTk(x)]; const R = co && sfxRecord(x.id, co, doc.checked); if (R) SFX.m.set(x.id, R); }
+    if (sfxApply() && typeof state !== 'undefined' && state.r === 'sec' && !document.querySelector('.modal, .ovl.open') && !(document.activeElement && document.activeElement.matches('input, textarea, select'))) { try { render(); } catch (e) { console.error(e); } }
+  } catch (e) { /* tried again on the next page view */ SFX.shards.delete(sh); } finally { SFX.loading.delete(sh); }
+}
+if (typeof fdBuild === 'function') { const _fb = fdBuild; fdBuild = docs => { _fb(docs); sfxApply(); }; }
+if (typeof PAGES !== 'undefined' && PAGES.sec) { const _ps = PAGES.sec; PAGES.sec = (pg, id) => { if (!FDS.m.has(id)) sfxLoad(id); return _ps(pg, id); }; }
+if (typeof fdFinNote === 'function') {
+  const _fn = fdFinNote;
+  fdFinNote = (o, f) => {
+    if (!f.real || f.real.src !== 'sec') return _fn(o, f);
+    const R = FDS.m.get(o.id); const q = (R && R.secQ) || [];
+    const rows = q.slice(0, 8).reverse();
+    const tbl = rows.length ? `<div class="tw" style="margin:8px 0"><table class="t"><thead><tr><th>Quarter (calendar)</th>${rows.map(r => `<th class="r">${esc(r.p.replace(/^CY(\d{4})Q(\d)$/, 'Q$2 $1'))}</th>`).join('')}</tr></thead><tbody><tr><td>Revenue</td>${rows.map(r => `<td class="r">${r.rev == null ? '—' : big(r.rev)}</td>`).join('')}</tr><tr><td>EPS${rows.some(r => r.er === 1) ? ' (diluted; basic where marked *)' : ' (diluted)'}</td>${rows.map(r => `<td class="r">${r.eps == null ? '—' : nf(r.eps, 2) + (r.er === 1 ? '*' : '')}</td>`).join('')}</tr></tbody></table></div>` : '';
+    return `<div class="callout fd-ok" style="margin-bottom:8px">Revenue and EPS as reported to the SEC in ${esc(o.name)}'s 10-K and 10-Q filings (XBRL), from <b><a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&amp;CIK=${esc(String((R && R.secCik) || ''))}" target="_blank" rel="noopener noreferrer">SEC EDGAR</a></b> (public domain) · updated ${fd(f.real.asOf)}. Other statement lines are not loaded for this company. ${f.real.basis === 'TTM' ? 'Income figures are trailing twelve months.' : 'Income figures are from the latest fiscal year.'} Valuation ratios use the latest price.</div>${tbl}`;
+  };
+}

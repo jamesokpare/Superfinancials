@@ -36,6 +36,18 @@
     {
       "path": "/api/cron/uk-allotments",
       "schedule": "50 1 * * *"
+    },
+    {
+      "path": "/api/cron/intl-filings",
+      "schedule": "35 6 * * *"
+    },
+    {
+      "path": "/api/cron/sec-sync",
+      "schedule": "35 7 * * *"
+    },
+    {
+      "path": "/api/cron/pension-sync",
+      "schedule": "35 4 * * 1"
     }
   ]
 }

@@ -8,6 +8,31 @@ import { runAfricaSync, GEN, readMarket, readIntel } from "../src/lib/africa/syn
 import { africanCode, isoDate, num, readMover } from "../src/lib/africa/read";
 import { facts, rankedLists } from "../src/lib/africa/country";
 import { memoryStore } from "../src/lib/market/store";
+import { cbnColumn, ngDate, readDmoAuction } from "../src/lib/africa/ngdebt";
+
+/** A one-page PDF with a text layer (Helvetica), one line per string. */
+function makePdf(lines: string[]): Buffer {
+  const esc = (x: string) => x.replace(/[\\()]/g, (c) => "\\" + c);
+  const content = "BT /F1 9 Tf 30 810 Td 11 TL " + lines.map((l) => `(${esc(l)}) Tj T*`).join(" ") + " ET";
+  const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>", `<< /Length ${content.length} >>\nstream\n${content}\nendstream`, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
+  let out = "%PDF-1.4\n"; const offs: number[] = [];
+  objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const x = out.length; out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => String(o).padStart(10, "0") + " 00000 n \n").join("") + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF`;
+  return Buffer.from(out, "latin1");
+}
+const CBN_HTML = `<html><body><table><tr><th>Date</th><th>Interbank Call Rate (%)</th><th>Open Buy Back (OBB)</th><th colspan="3">NIBOR</th><th>MPR</th></tr>
+<tr><th></th><th></th><th></th><th>7 Days</th><th>30 Days</th><th>90 Days</th><th></th></tr>
+<tr><td>28/10/2026</td><td>26.50</td><td>26.10</td><td>27.20</td><td>28.00</td><td>29.10</td><td>27.50</td></tr>
+<tr><td>29/10/2026</td><td>27.00</td><td>26.40</td><td>27.40</td><td>28.10</td><td>N/A</td><td>27.50</td></tr></table></body></html>`;
+const DMO_PDF = makePdf([
+  "DEBT MANAGEMENT OFFICE NIGERIA", "FGN BOND AUCTION RESULTS", "Auction Date: October 22, 2026",
+  "Bond 19.30% FGN APR 2029 18.50% FGN FEB 2031 21.00% FGN JUN 2033",
+  "Amount Offered (N) 90,000,000,000.00 90,000,000,000.00 80,000,000,000.00",
+  "Total Subscription (N) 120,500,000,000.00 98,000,000,000.00 70,250,000,000.00",
+  "Total Allotment (N) 85,000,000,000.00 60,000,000,000.00 40,000,000,000.00",
+  "Range of Bids 17.00% - 21.00% 17.50% - 22.00% 18.00% - 23.00%",
+  "Marginal Rates 18.25% 18.90% 19.40%",
+]);
 
 process.env.MANSA_API_KEY = "mansa_live_sk_test"; process.env.NGX_PULSE_API_KEY = "ngxpulse_sk_test";
 process.env.MYSTOCKS_AFRICA_API_KEY = "pk_live_test"; process.env.AFRICA_API_KEY = "afr_test";
@@ -17,6 +42,12 @@ let mansaDown = false; const seen: string[] = [];
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = new URL(input instanceof Request ? input.url : String(input)); const p = url.pathname; seen.push(url.hostname + p + url.search);
   const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "content-type": "application/json" } });
+  if (url.hostname === "www.cbn.gov.ng") return url.searchParams.get("year") === "2026" ? new Response(CBN_HTML, { status: 200, headers: { "content-type": "text/html" } }) : new Response("<html>no data</html>", { status: 200 });
+  if (url.hostname === "www.dmo.gov.ng") {
+    if (p === "/fgn-bonds/bonds-auction-results") return new Response(`<ul><li><a href="/fgn-bonds/bonds-auction-results/5123-fgn-bond-auction-result-for-october-2026/file">FGN Bond Auction Result for October 2026</a></li><li><a href="/about">About</a></li><li><a href="/fgn-bonds/bonds-auction-results/5001-fgn-bond-auction-result-for-september-2026/file">FGN Bond Auction Result for September 2026</a></li></ul>`, { status: 200 });
+    if (p.includes("5123")) return new Response(new Uint8Array(DMO_PDF), { status: 200, headers: { "content-type": "application/pdf" } });
+    return new Response("missing", { status: 404 });
+  }
   if (url.hostname === "ngxpulse.ng") {
     if (p === "/api/ngxdata/market") return json({ data: { asi: 151234.56, asi_change_percent: -0.42, market_cap: "95,400,000,000,000", volume: 512345678, value: 12500000000, deals: 14321 } });
     if (p === "/api/ngxdata/market-status") return json({ status: "closed" });
@@ -128,6 +159,25 @@ t("elections: African, upcoming, high importance", cal["auto-elec-CI-2027-10-25-
 t("owner event with the same id is left alone", cal["auto-elec-KE-2027-08-10-general"]?.title === "Owner's own", cal["auto-elec-KE-2027-08-10-general"]);
 t("upcoming auto events no longer listed are removed", !cal["auto-elec-GH-2027-12-07-presidential"] && !cal["auto-ngxdiv-ZENITHBANK-2026-11-20"]);
 t("meta: summary, count and rotation state", afr._meta.n > 10 && /disclosures/.test(afr._meta.note) && afr._meta.state.divCursor === 0 && typeof afr._meta.sources.elections.n === "number", afr._meta);
+
+// --- Nigerian money-market rates (CBN) and FGN bond auctions (DMO) ---
+const series = Object.fromEntries((db.adm_series ?? []).map((d) => [d.id, d.data])) as Record<string, any>;
+t("CBN: columns under a group heading read, dates day-first, N/A skipped", series["NG.IBCALL"]?.v.join() === "26.5,27" && series["NG.NIBOR7D"]?.d.join() === "2026-10-28,2026-10-29" && series["NG.NIBOR90D"]?.v.length === 1 && series["NG.OBB"] && series["NG.MPR"]?.v[1] === 27.5, Object.keys(series));
+t("CBN: attribution and series format", series["NG.IBCALL"]?.src === "Central Bank of Nigeria" && series["NG.IBCALL"].gen === GEN && series["NG.IBCALL"].arr.join() === "d,v" && series["NG.IBCALL"].freq === "D", series["NG.IBCALL"]);
+t("CBN: heading names", cbnColumn("NIBOR Overnight")?.[0] === "NIBORON" && cbnColumn("364-Day T-Bills")?.[0] === "TB364" && cbnColumn("Remarks") === null && ngDate("Oct-2026") === "2026-10-31" && ngDate(46000) === "2025-12-09");
+const auc = cal["auto-dmo-2026-10-22"];
+t("DMO: auction event from the PDF text, amounts in ₦bn, marginal rates", auc?.cat === "auc" && auc.cc === "NG" && auc.actual === "3y 18.25%, 4y 18.90%, 7y 19.40%" && /offered ₦90bn, subscribed ₦120.5bn, allotted ₦85bn/.test(auc.notes) && auc.srcName === "Debt Management Office Nigeria", auc);
+t("DMO: marginal-rate series by tenor", series["NG.DMO4Y"]?.v[0] === 18.9 && series["NG.DMO4Y"].d[0] === "2026-10-22" && series["NG.DMO4Y"].cat === "mk", series["NG.DMO4Y"]);
+t("DMO: failed document reported, processed ones remembered", afr._meta.state.dmoDone.length === 1 && /dmo\.gov\.ng/.test(afr._meta.state.dmoDone[0]), afr._meta.state);
+t("DMO: text without bonds is not an auction", readDmoAuction("Annual report 2026", "x") === null);
+{
+  const r5 = await runAfricaSync({ store, now: new Date("2026-11-30T17:10:00Z"), only: ["dmo-auctions", "cbn-money"] });
+  const s5 = Object.fromEntries(store.dump().adm_series.map((d) => [d.id, d.data])) as Record<string, any>;
+  t("DMO: documents already read are not fetched again; stored points kept", r5.sources["dmo-auctions"]?.n === 0 && s5["NG.DMO4Y"]?.v.length === 1 && s5["NG.IBCALL"]?.v.length === 2, r5.sources);
+}
+const owned = memoryStore({ adm_series: [{ id: "NG.MPR", data: { kind: "eco", name: "Owner MPR", d: ["2026-01-01"], v: [27.5] } }] });
+const r6 = await runAfricaSync({ store: owned, now: NOW, only: ["cbn-money"] });
+t("owner series left alone", r6.series.kept.includes("NG.MPR") && Object.fromEntries(owned.dump().adm_series.map((d) => [d.id, d.data]))["NG.MPR"].name === "Owner MPR", r6.series);
 
 // --- a failing source keeps its earlier snapshot section ---
 mansaDown = true;

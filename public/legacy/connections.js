@@ -13,7 +13,7 @@
 'use strict';
 var SF_CONN = null; // public connection list, read by the landing page (superfinancials.js lpData)
 const CN = { list: null, checks: null, checking: false, err: null, syncs: null, intra: {} };
-const CN_SYNCS = [['mkt', 'Market prices', 'Weekdays 22:30 UTC', 80], ['mktnews', 'News', '06:15 and 16:45 UTC', 26], ['fund', 'Fundamentals and earnings', 'Daily 05:40 UTC', 26], ['macrosync', 'Macro data, calendars, Form D', 'Daily 05:20 and 05:50 UTC', 50], ['afr', 'African markets', 'Daily 17:10 UTC', 50]];
+const CN_SYNCS = [['mkt', 'Market prices', 'Weekdays 22:30 UTC', 80], ['mktnews', 'News', '06:15 and 16:45 UTC', 26], ['fund', 'Fundamentals and earnings', 'Daily 05:40 UTC', 26], ['macrosync', 'Macro data, calendars, Form D', 'Daily 05:20 and 05:50 UTC', 50], ['afr', 'African markets, Nigerian rates and bond auctions', 'Daily 17:10 UTC', 50], ['filings', 'SEC filings', 'Daily 06:25 UTC', 50], ['filings', 'Japan, Korea, EU and UK filings', 'Daily 06:35 UTC', 50, '_intl'], ['secsync', 'SEC XBRL EPS/revenue, Reg CF and Reg A', 'Daily 07:35 UTC', 50], ['pensionsync', 'Public pension fund reports', 'Mondays 04:35 UTC', 240]];
 const cnAgo = iso => { const t = Date.parse(iso || ''); if (!isFinite(t)) return '—'; const h = (Date.now() - t) / 36e5; return h < 1 ? `${Math.max(1, Math.round(h * 60))} min ago` : h < 48 ? `${Math.round(h)} h ago` : `${Math.round(h / 24)} days ago`; };
 async function cnFetch(path, auth) {
   const f = auth && window.sfAuth && typeof window.sfAuth.fetch === 'function' ? window.sfAuth.fetch.bind(window.sfAuth) : fetch;
@@ -37,7 +37,7 @@ async function cnLoad() {
 async function cnSyncs() {
   try {
     const db = window.claude && typeof window.claude.use === 'function' ? await withTimeout(window.claude.use('db'), 10000) : null; if (!db) return;
-    const rows = await Promise.all(CN_SYNCS.map(async ([col]) => { try { const s = await db.collection(col).doc('_meta').get(); return s && s.exists ? s.data() : null; } catch (e) { return null; } }));
+    const rows = await Promise.all(CN_SYNCS.map(async ([col, , , , doc]) => { try { const s = await db.collection(col).doc(doc || '_meta').get(); return s && s.exists ? s.data() : null; } catch (e) { return null; } }));
     CN.syncs = rows; if (state.r === 'data') cnRefresh();
   } catch (e) { }
 }

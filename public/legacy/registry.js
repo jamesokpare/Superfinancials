@@ -24,6 +24,14 @@ const ukD = d => (d ? fd(Date.parse(d)) : '—');
 const ukStatus = s => { const t = String(s || 'unknown'); const k = /^active$/i.test(t) ? 'ok' : /dissolved|liquidation|insolvency|receivership|administration|removed|closed/i.test(t) ? 'bad' : ''; return `<span class="badge ${k}">${esc(t.replace(/-/g, ' ').toUpperCase())}</span>`; };
 /** SH01 allotments in the last two years. */
 const ukAllot24 = c => (c.allotments || []).filter(x => Date.parse(x.allotted || x.filed) >= Date.now() - 730 * 864e5).length;
+/** Amount raised in an SH01 (read from the document by the allotments sync), summed by currency. */
+const ukRaised = x => {
+  const r = x && Array.isArray(x.raised) ? x.raised : null;
+  if (!r || !r.length) return x && x.pdf === 'no-text' ? '<span class="sub" title="Paper filing: the scanned document has no text to read">scanned</span>' : '—';
+  const by = {}; r.forEach(k => { by[k.ccy] = (by[k.ccy] || 0) + (+k.amount || 0); });
+  const tip = r.map(k => `${k.cls}: ${nf(k.shares, 0)} shares × ${k.ccy} ${k.paid}`).join('\n');
+  return `<span title="${esc(tip)}">${Object.entries(by).map(([c, v]) => `${esc(c)} ${nf(v, v % 1 ? 2 : 0)}`).join('<br>')}</span>`;
+};
 const ukNum = s => { const n = String(s || '').trim().toUpperCase().replace(/\s+/g, ''); return /^\d{1,8}$/.test(n) ? n.padStart(8, '0') : /^[A-Z]{2}\d{6}$/.test(n) ? n : null; };
 
 async function ukGet(path) {
@@ -85,13 +93,31 @@ async function ukCompany(el, num) {
     { k: 'x', h: 'Filing', f: x => `${esc(x.description || x.type || '')}<div class="sub">${esc(x.category || '')}</div>` },
     { k: 'p', h: 'Document', a: 'r', f: x => x.doc ? `<a href="${esc(x.doc)}" target="_blank" rel="noopener noreferrer">PDF</a>` : '—' },
   ] });
-  table($('#ukA', el), { dense: true, rows: c.allotments || [], empty: c.allotments ? '<b>No share allotments filed</b>A company files form SH01 within a month of issuing new shares, for example in a funding round.' : '<b>Not available</b>', cols: [
-    { k: 'a', h: 'Shares allotted on', f: x => ukD(x.allotted) },
-    { k: 'f', h: 'Filed', f: x => `<span class="sub">${ukD(x.filed)}</span>` },
-    { k: 'c', h: 'Share capital after the allotment', a: 'r', f: x => x.capital.length ? x.capital.map(k => `${esc(k.ccy)} ${k.figure == null ? '—' : nf(k.figure, k.figure % 1 ? 2 : 0)}`).join('<br>') : '—' },
-    { k: 'p', h: 'Document', a: 'r', f: x => x.doc ? `<a href="${esc(x.doc)}" target="_blank" rel="noopener noreferrer">SH01 (PDF)</a>` : '<span class="sub">paper filing</span>' },
-  ] });
-  $('#ukA', el).insertAdjacentHTML('beforeend', '<p class="note" style="padding:0 12px 10px">New shares issued, for example in a funding round. The register gives the date and the total nominal share capital after the allotment; the number of shares and the price paid are in the SH01 document.</p>');
+  // Amounts raised come from the daily allotments sync (ukalloc/d-<filed>, last 60 days), matched by filing date and allotment date.
+  const amt = new Map();
+  const allotTable = () => {
+    const box = $('#ukA', el); if (!box) return; box.innerHTML = '';
+    const has = amt.size > 0;
+    table(box, { dense: true, rows: c.allotments || [], empty: c.allotments ? '<b>No share allotments filed</b>A company files form SH01 within a month of issuing new shares, for example in a funding round.' : '<b>Not available</b>', cols: [
+      { k: 'a', h: 'Shares allotted on', f: x => ukD(x.allotted) },
+      { k: 'f', h: 'Filed', f: x => `<span class="sub">${ukD(x.filed)}</span>` },
+      ...(has ? [{ k: 'm', h: 'Amount raised', a: 'r', f: x => { const m = amt.get(x.filed + '|' + (x.allotted || '')); return m ? ukRaised(m) : '<span class="sub">—</span>'; } }] : []),
+      { k: 'c', h: 'Share capital after the allotment', a: 'r', f: x => x.capital.length ? x.capital.map(k => `${esc(k.ccy)} ${k.figure == null ? '—' : nf(k.figure, k.figure % 1 ? 2 : 0)}`).join('<br>') : '—' },
+      { k: 'p', h: 'Document', a: 'r', f: x => x.doc ? `<a href="${esc(x.doc)}" target="_blank" rel="noopener noreferrer">SH01 (PDF)</a>` : '<span class="sub">paper filing</span>' },
+    ] });
+    box.insertAdjacentHTML('beforeend', `<p class="note" style="padding:0 12px 10px">New shares issued, for example in a funding round. The register gives the date and the total nominal share capital after the allotment; ${has ? 'the amount raised (shares allotted × amount paid per share, including premium) is read from recent SH01 documents' : 'the number of shares and the price paid are in the SH01 document'}.</p>`);
+  };
+  allotTable();
+  (async () => {
+    try {
+      const recent = (c.allotments || []).filter(x => x.filed && Date.parse(x.filed) >= Date.now() - 60 * 864e5); if (!recent.length || !c.number) return;
+      const cl = window.claude; const db = REG.db || (cl && typeof cl.use === 'function' ? await withTimeout(cl.use('db'), 10000) : null); if (!db) return;
+      const ids = [...new Set(recent.map(x => 'd-' + x.filed))]; const col = db.collection('ukalloc'); let got = new Map();
+      if (typeof col.getMany === 'function') got = await col.getMany(ids); else await Promise.all(ids.map(async id => { const s = await col.doc(id).get(); if (s && s.exists) got.set(id, s.data()); }));
+      for (const d of got.values()) for (const x of (d && d.items) || []) if (x.num === c.number && (x.raised || x.pdf === 'no-text')) amt.set(x.filed + '|' + (x.allotted || ''), x);
+      if (amt.size) allotTable();
+    } catch (e) { /* amounts are optional */ }
+  })();
   table($('#ukCh', el), { dense: true, rows: c.charges ? c.charges.items : [], empty: c.charges ? '<b>No charges registered</b>' : '<b>Not available</b>', cols: [
     { k: 'c', h: 'Created', f: x => ukD(x.created) },
     { k: 's', h: 'Status', f: x => `${esc(x.status)}${x.satisfied ? `<div class="sub">${ukD(x.satisfied)}</div>` : ''}` },
@@ -467,7 +493,7 @@ if (typeof searchItems === 'function') {
 /* ---------- latest UK share allotments (Companies House filing stream, src/lib/ukstream) ----------
    Shown on the registry's start page: the last seven days of SH01 filings across all UK companies,
    read from ukalloc/d-<date>. New shares are usually a funding round; the register gives the date and
-   the share capital after the allotment, not the amount raised. */
+   the share capital after the allotment, and the sync reads the amount raised from the SH01 document. */
 const ALLOT = { st: 'idle', items: [], q: '' };
 async function allotLoad(pg) {
   if (ALLOT.st !== 'idle') return; ALLOT.st = 'loading';
@@ -485,8 +511,8 @@ function allotPanel() {
   if (ALLOT.st !== 'on' || !ALLOT.items.length) return '<section class="panel" id="allotP" hidden></section>';
   const q = ALLOT.q.trim().toLowerCase(); const rows = ALLOT.items.filter(x => !q || String(x.name || '').toLowerCase().includes(q) || String(x.num).toLowerCase().includes(q)).slice(0, 150);
   return `<section class="panel" id="allotP"><header class="ph"><span class="pt">Latest UK share allotments (SH01)</span><span class="pm">${nf(ALLOT.items.length, 0)} filed in the last 7 days · <input class="inp sm" id="allotQ" placeholder="Filter by company" value="${esc(ALLOT.q)}" style="width:180px"></span></header>
-    <div class="tw" style="max-height:420px;overflow:auto"><table class="t dense"><thead><tr><th>Filed</th><th>Company</th><th>Shares allotted on</th><th class="r">Share capital after</th></tr></thead><tbody>${rows.map(x => `<tr><td class="sub">${ukD(x.filed)}</td><td><a class="tk" ${regHref('uk~' + x.num)} style="font-family:var(--f-ui)">${esc(x.name || x.num)}</a><div class="sub mono">${esc(x.num)}</div></td><td>${ukD(x.allotted)}</td><td class="r">${(x.capital || []).map(k => `${esc(k.ccy)} ${k.figure == null ? '—' : nf(k.figure, k.figure % 1 ? 2 : 0)}`).join('<br>') || '—'}</td></tr>`).join('')}</tbody></table></div>
-    <p class="note" style="padding:0 20px">New shares issued by UK companies, usually in a funding round. The register gives the allotment date and the total nominal share capital afterwards; the number of shares and the price are in each SH01 document. Source: Companies House streaming API. Contains public sector information licensed under the Open Government Licence v3.0.</p></section>`;
+    <div class="tw" style="max-height:420px;overflow:auto"><table class="t dense"><thead><tr><th>Filed</th><th>Company</th><th>Shares allotted on</th><th class="r">Amount raised</th><th class="r">Share capital after</th></tr></thead><tbody>${rows.map(x => `<tr><td class="sub">${ukD(x.filed)}</td><td><a class="tk" ${regHref('uk~' + x.num)} style="font-family:var(--f-ui)">${esc(x.name || x.num)}</a><div class="sub mono">${esc(x.num)}</div></td><td>${ukD(x.allotted)}</td><td class="r">${ukRaised(x)}</td><td class="r">${(x.capital || []).map(k => `${esc(k.ccy)} ${k.figure == null ? '—' : nf(k.figure, k.figure % 1 ? 2 : 0)}`).join('<br>') || '—'}</td></tr>`).join('')}</tbody></table></div>
+    <p class="note" style="padding:0 20px">New shares issued by UK companies, usually in a funding round. The register gives the allotment date and the total nominal share capital afterwards. The amount raised is shares allotted × amount paid per share (including premium), read from the SH01 document where it has a text layer (paper filings are scanned images, marked “scanned”); hover for the classes. Source: Companies House streaming API and Document API. Contains public sector information licensed under the Open Government Licence v3.0.</p></section>`;
 }
 if (typeof PAGES !== 'undefined' && PAGES.registry) {
   const _rg = PAGES.registry;

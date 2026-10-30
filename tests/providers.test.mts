@@ -86,7 +86,7 @@ delete process.env.FRED_API_KEY;
 await throws("Missing key names the env var", async () => createFred(), (e) => (e as Error).name === "MissingKeyError" && (e as { envVar?: string }).envVar === "FRED_API_KEY");
 
 // --- registry ---------------------------------------------------------------
-const secrets = ["AFRICA_API_KEY", "ALPHAVANTAGE_API_KEY", "COMPANIES_HOUSE_API_KEY", "CURRENTS_API_KEY", "DATABASE_URL", "EODHD_API_KEY", "EXCHANGERATE_API_KEY", "FMP_API_KEY", "FRED_API_KEY", "MANSA_API_KEY", "MARKETAUX_API_KEY", "MARKETSTACK_API_KEY", "MYSTOCKS_AFRICA_API_KEY", "NEWSAPI_AI_KEY", "NGX_PULSE_API_KEY"];
+const secrets = ["AFRICA_API_KEY", "ALPHAVANTAGE_API_KEY", "COMPANIES_HOUSE_API_KEY", "CURRENTS_API_KEY", "DATABASE_URL", "EDINET_API_KEY", "EODHD_API_KEY", "EXCHANGERATE_API_KEY", "FMP_API_KEY", "FRED_API_KEY", "MANSA_API_KEY", "MARKETAUX_API_KEY", "MARKETSTACK_API_KEY", "MYSTOCKS_AFRICA_API_KEY", "NEWSAPI_AI_KEY", "NGX_PULSE_API_KEY", "OPENDART_API_KEY"];
 t("Registry covers every repository secret", JSON.stringify(CONNECTIONS.map((c) => c.env).sort()) === JSON.stringify(secrets), CONNECTIONS.map((c) => c.env));
 for (const s of secrets) delete process.env[s];
 process.env.FMP_API_KEY = "LEAKYKEY99";

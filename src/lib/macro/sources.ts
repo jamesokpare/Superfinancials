@@ -41,9 +41,9 @@ export function parseCsv(text: string): Record<string, string>[] {
   const head = (rows.shift() ?? []).map((h) => h.split(":")[0].trim().replace(/^﻿/, "")); // "REF_AREA:Reference area" → "REF_AREA"
   return rows.filter((r) => r.length > 1 || r[0]).map((r) => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ""])));
 }
-const BROWSER_UA = { "user-agent": "Mozilla/5.0 (compatible; Superfinancials data sync; +https://github.com/jamesokpare/Superfinancials)" };
+export const BROWSER_UA = { "user-agent": "Mozilla/5.0 (compatible; Superfinancials data sync; +https://github.com/jamesokpare/Superfinancials)" };
 /** CSV over HTTP. Overloaded SDMX services (OECD) answer 429/500/503 at busy times: retried with backoff. */
-async function getCsv(name: string, url: URL, timeoutMs = 60_000, retries = 2, ua: Record<string, string> = UA): Promise<Record<string, string>[]> {
+export async function getCsv(name: string, url: URL, timeoutMs = 60_000, retries = 2, ua: Record<string, string> = UA): Promise<Record<string, string>[]> {
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try { res = await fetch(url, { headers: { ...ua, accept: "text/csv, application/vnd.sdmx.data+csv, */*" }, signal: AbortSignal.timeout(timeoutMs) }); }
@@ -319,7 +319,7 @@ export const PINK: { code: string; id: string; note: string; conv?: "mmbtu-eurmw
 ];
 export const PINK_PAGE = "https://www.worldbank.org/en/research/commodity-markets";
 export const PINK_FALLBACK = "https://thedocs.worldbank.org/en/doc/74e8be41ceb20fa0da750cda2f6b9e4e-0050012026/related/CMO-Historical-Data-Monthly.xlsx";
-async function getBuf(name: string, url: string, headers: Record<string, string> = BROWSER_UA): Promise<Buffer> {
+export async function getBuf(name: string, url: string, headers: Record<string, string> = BROWSER_UA): Promise<Buffer> {
   let res: Response;
   try { res = await fetch(url, { headers, signal: AbortSignal.timeout(90_000) }); } catch (e) { throw new ProviderError(name, `request failed: ${(e as Error).message}`); }
   if (!res.ok) throw new ProviderError(name, `HTTP ${res.status} for ${url.slice(0, 120)}`, res.status);
@@ -567,6 +567,8 @@ export const FRED_SERIES: FredSpec2[] = [
   { id: "GACDISA066MSFRBNY", code: "EMPIREMFG", name: "New York Fed Empire State manufacturing: general business conditions", unit: "index (diffusion, SA)", cat: "gr", freq: "M", src: "Federal Reserve Bank of New York, Empire State Manufacturing Survey (via FRED)", notes: "Diffusion index, seasonally adjusted; above zero means expansion. Not the ISM PMI." },
   { id: "BACTSAMFRBDAL", code: "DALLASMFG", name: "Dallas Fed Texas manufacturing: general business activity", unit: "index (diffusion, SA)", cat: "gr", freq: "M", src: "Federal Reserve Bank of Dallas, Texas Manufacturing Outlook Survey (via FRED)", notes: "Diffusion index, seasonally adjusted; above zero means expansion. Not the ISM PMI." },
   { id: "T5YIFR", code: "BE5Y5Y", name: "5-year, 5-year forward inflation expectation", unit: "%", cat: "in", freq: "D", src: "Federal Reserve Bank of St. Louis via FRED (T5YIFR)", notes: "Expected average inflation over the five years starting five years from now, from Treasury and TIPS yields." },
+  // Federal Reserve Bank of Cleveland expected inflation (model of Treasury yields, inflation swaps and surveys). Free to use with credit.
+  ...([1, 2, 5, 10, 30] as const).map((y) => ({ id: `EXPINF${y}YR`, code: `CLEVEI${y}Y`, name: `Expected inflation, next ${y} year${y > 1 ? "s" : ""} (Cleveland Fed model)`, unit: "%", cat: "in" as const, freq: "M" as const, src: `Federal Reserve Bank of Cleveland, Inflation Expectations (via FRED EXPINF${y}YR)`, notes: `Average inflation expected over the next ${y} year${y > 1 ? "s" : ""}, estimated by the Cleveland Fed from Treasury yields, inflation swaps and survey forecasts (Haubrich, Pennacchi and Ritchken). Source: Federal Reserve Bank of Cleveland.` })),
 ];
 /** Daily or monthly observations for the listed FRED series (and spreads between two of them). */
 export async function fredSeriesList(specs: FredSpec2[] = FRED_SERIES, now = new Date()): Promise<MacroSeries[]> {
