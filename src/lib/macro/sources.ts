@@ -546,3 +546,35 @@ export function recessionSpans(points: Point[]): { from: string; to: string }[] 
   if (s) out.push({ from: s, to: last });
   return out;
 }
+
+// --- FRED series shown with their original publisher's credit -----------------------------------
+/**
+ * Series read through the FRED API (FRED_API_KEY), each credited to its original publisher.
+ * Only series whose publishers allow reuse with attribution are listed (U.S. government data,
+ * Federal Reserve Banks' surveys); proprietary series on FRED (ICE BofA, S&P, Moody's) are left out.
+ * `diff` builds a spread from two series (a − b, in basis points when `bp`).
+ */
+export type FredSpec2 = { id: string; code: string; name: string; unit: string; cat: MacroSeries["cat"]; freq: "D" | "W" | "M"; src: string; from?: number; minus?: string; bp?: boolean; notes: string };
+export const FRED_SERIES: FredSpec2[] = [
+  { id: "T5YIE", code: "BE5Y", name: "5-year breakeven inflation (Treasury market)", unit: "%", cat: "in", freq: "D", src: "U.S. Treasury and Federal Reserve via FRED (T5YIE)", notes: "5-year Treasury yield minus 5-year TIPS yield: the inflation rate the bond market prices in. A free stand-in for a 5-year inflation swap." },
+  { id: "T10YIE", code: "BE10Y", name: "10-year breakeven inflation (Treasury market)", unit: "%", cat: "in", freq: "D", src: "U.S. Treasury and Federal Reserve via FRED (T10YIE)", notes: "10-year Treasury yield minus 10-year TIPS yield. A free stand-in for a 10-year inflation swap." },
+  { id: "T5YIFR", code: "BE5Y5Y", name: "5-year, 5-year forward inflation expectation", unit: "%", cat: "in", freq: "D", src: "Federal Reserve Bank of St. Louis via FRED (T5YIFR)", notes: "Expected average inflation over the five years starting five years from now, from Treasury and TIPS yields." },
+];
+/** Daily or monthly observations for the listed FRED series (and spreads between two of them). */
+export async function fredSeriesList(specs: FredSpec2[] = FRED_SERIES, now = new Date()): Promise<MacroSeries[]> {
+  const key = requireKey("FRED", "FRED_API_KEY"); const out: MacroSeries[] = []; const errors: string[] = [];
+  const get = async (id: string, from: string) => {
+    const r = await getJson<{ observations?: { date: string; value: string }[] }>("FRED", buildUrl("https://api.stlouisfed.org/fred", "/series/observations", { api_key: key, file_type: "json", series_id: id, observation_start: from }));
+    return new Map((r.observations ?? []).flatMap((o) => { const v = Number(o.value); return o.value !== "." && Number.isFinite(v) ? [[o.date, v] as [string, number]] : []; }));
+  };
+  for (const s of specs) {
+    const from = `${now.getUTCFullYear() - (s.from ?? (s.freq === "D" ? 5 : 20))}-01-01`;
+    try {
+      const a = await get(s.id, from); const b = s.minus ? await get(s.minus, from) : null;
+      const pts = [...a].flatMap(([d, v]) => { if (b && !b.has(d)) return []; const x = b ? (v - b.get(d)!) * (s.bp ? 100 : 1) : v; const t = s.freq === "M" ? periodEnd(d.slice(0, 7)) : d; return t ? [{ t, v: Number(x.toFixed(s.bp ? 1 : 3)) }] : []; });
+      if (pts.length) out.push({ cc: "US", code: s.code, name: s.name, unit: s.unit, cat: s.cat, freq: s.freq, src: s.src, url: `https://fred.stlouisfed.org/series/${s.id}`, notes: s.notes, points: sortPts(pts) });
+    } catch (e) { errors.push(`${s.id}: ${(e as Error).message}`); }
+  }
+  if (errors.length === specs.length) throw new ProviderError("FRED", errors[0]);
+  return out;
+}

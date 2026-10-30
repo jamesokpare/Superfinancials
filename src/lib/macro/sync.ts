@@ -22,13 +22,13 @@ import { envKey } from "@/lib/providers/http";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
 import { formDFiling, formDIndex, type FormD } from "./formd";
 import { boc, boe, cftcCot, estr, nyFed, treasuryCurve } from "./rates";
-import { bisCpi, bisPolicyRates, dividendCalendar, ecb, econCalendar, eiaInventories, fredReleaseCalendar, icsCalendars, ipoCalendar, oecdCpi, imfWeo, nberRecessions, pinkSheet, smardPower, splitCalendar, treasuryAuctions, worldBank, type CalEvent, type InstSeries, type MacroSeries } from "./sources";
+import { bisCpi, bisPolicyRates, dividendCalendar, ecb, econCalendar, eiaInventories, fredReleaseCalendar, icsCalendars, ipoCalendar, oecdCpi, fredSeriesList, imfWeo, nberRecessions, pinkSheet, smardPower, splitCalendar, treasuryAuctions, worldBank, type CalEvent, type InstSeries, type MacroSeries } from "./sources";
 
 export const GEN = "macro-sync";
 /** Countries the app knows (Country data hub), app codes. */
 export const MACRO_COUNTRIES = "AF AO AR AT AU BD BE BF BJ BR BW CA CD CG CH CI CL CM CN CO CV CZ DE DK DZ EG ES ET EU FI FR GA GH GM GN GR HK HU ID IE IL IN IQ IR IT JM JO JP KE KR KW KZ LB LK LR LY MA MG ML MU MW MX MY MZ NA NE NG NL NO NZ OM PE PH PK PL PT QA RO RU RW SA SD SE SG SL SN SS TG TH TN TR TW TZ UA AE UG UK US UY VE VN ZA ZM ZW".split(" ");
 
-export type MacroSourceId = "worldbank" | "imf" | "nber" | "bis" | "ecb" | "oecd" | "fred-calendar" | "treasury" | "econ-calendar" | "dividends" | "splits" | "ipos" | "sec-formd" | "bis-cpi" | "release-calendars" | "commodities" | "power" | "eia" | "treasury-curve" | "nyfed" | "boe" | "boc" | "estr" | "cftc";
+export type MacroSourceId = "worldbank" | "imf" | "nber" | "fred-series" | "bis" | "ecb" | "oecd" | "fred-calendar" | "treasury" | "econ-calendar" | "dividends" | "splits" | "ipos" | "sec-formd" | "bis-cpi" | "release-calendars" | "commodities" | "power" | "eia" | "treasury-curve" | "nyfed" | "boe" | "boc" | "estr" | "cftc";
 type State = Record<string, unknown>;
 type Fetched = { series?: MacroSeries[]; events?: CalEvent[]; companies?: FormD[]; instruments?: InstSeries[]; state?: State };
 const intEnv = (k: string, d: number) => { const n = Number(process.env[k]); return process.env[k] && Number.isFinite(n) && n >= 0 ? n : d; };
@@ -67,6 +67,7 @@ export const MACRO_SOURCES: { id: MacroSourceId; name: string; needs?: string; g
   { id: "worldbank", name: "World Bank", run: async (now) => ({ series: await worldBank(MACRO_COUNTRIES, now.getUTCFullYear() - 15, now) }) },
   { id: "imf", name: "IMF World Economic Outlook projections", run: async (now) => ({ series: await imfWeo(MACRO_COUNTRIES, now) }) },
   { id: "nber", name: "NBER recession dates (FRED)", needs: "FRED_API_KEY", run: async () => ({ series: await nberRecessions() }) },
+  { id: "fred-series", name: "FRED: breakevens, funding spread, regional Fed surveys", needs: "FRED_API_KEY", run: async (now) => ({ series: await fredSeriesList(undefined, now) }) },
   { id: "bis", name: "BIS policy rates", run: async (now) => ({ series: await bisPolicyRates(`${now.getUTCFullYear() - 10}-01`) }) },
   { id: "ecb", name: "ECB", run: async (now) => ({ series: await ecb(`${now.getUTCFullYear() - 10}-01-01`) }) },
   { id: "oecd", name: "OECD CPI", run: async (now) => ({ series: await oecdCpi(`${now.getUTCFullYear() - 10}-01`) }) },

@@ -463,3 +463,39 @@ if (typeof searchItems === 'function') {
     } catch (e) { console.error(e); return res; }
   };
 }
+
+/* ---------- latest UK share allotments (Companies House filing stream, src/lib/ukstream) ----------
+   Shown on the registry's start page: the last seven days of SH01 filings across all UK companies,
+   read from ukalloc/d-<date>. New shares are usually a funding round; the register gives the date and
+   the share capital after the allotment, not the amount raised. */
+const ALLOT = { st: 'idle', items: [], q: '' };
+async function allotLoad(pg) {
+  if (ALLOT.st !== 'idle') return; ALLOT.st = 'loading';
+  try {
+    const cl = window.claude; const db = REG.db || (cl && typeof cl.use === 'function' ? await withTimeout(cl.use('db'), 10000) : null); if (!db) { ALLOT.st = 'off'; return; }
+    const ids = Array.from({ length: 8 }, (_, i) => 'd-' + new Date(Date.now() - i * 864e5).toISOString().slice(0, 10));
+    const col = db.collection('ukalloc'); let got = new Map();
+    if (typeof col.getMany === 'function') got = await col.getMany(ids); else await Promise.all(ids.map(async id => { const s = await col.doc(id).get(); if (s && s.exists) got.set(id, s.data()); }));
+    ALLOT.items = [...got.values()].flatMap(d => (d && Array.isArray(d.items) ? d.items : [])).sort((a, b) => String(b.filed).localeCompare(String(a.filed)) || String(a.name).localeCompare(String(b.name)));
+    ALLOT.st = 'on';
+  } catch (e) { ALLOT.st = 'off'; }
+  if (state.r === 'registry' && !REG.q) { const box = document.getElementById('allotP'); if (box) box.outerHTML = allotPanel(); }
+}
+function allotPanel() {
+  if (ALLOT.st !== 'on' || !ALLOT.items.length) return '<section class="panel" id="allotP" hidden></section>';
+  const q = ALLOT.q.trim().toLowerCase(); const rows = ALLOT.items.filter(x => !q || String(x.name || '').toLowerCase().includes(q) || String(x.num).toLowerCase().includes(q)).slice(0, 150);
+  return `<section class="panel" id="allotP"><header class="ph"><span class="pt">Latest UK share allotments (SH01)</span><span class="pm">${nf(ALLOT.items.length, 0)} filed in the last 7 days · <input class="inp sm" id="allotQ" placeholder="Filter by company" value="${esc(ALLOT.q)}" style="width:180px"></span></header>
+    <div class="tw" style="max-height:420px;overflow:auto"><table class="t dense"><thead><tr><th>Filed</th><th>Company</th><th>Shares allotted on</th><th class="r">Share capital after</th></tr></thead><tbody>${rows.map(x => `<tr><td class="sub">${ukD(x.filed)}</td><td><a class="tk" ${regHref('uk~' + x.num)} style="font-family:var(--f-ui)">${esc(x.name || x.num)}</a><div class="sub mono">${esc(x.num)}</div></td><td>${ukD(x.allotted)}</td><td class="r">${(x.capital || []).map(k => `${esc(k.ccy)} ${k.figure == null ? '—' : nf(k.figure, k.figure % 1 ? 2 : 0)}`).join('<br>') || '—'}</td></tr>`).join('')}</tbody></table></div>
+    <p class="note" style="padding:0 20px">New shares issued by UK companies, usually in a funding round. The register gives the allotment date and the total nominal share capital afterwards; the number of shares and the price are in each SH01 document. Source: Companies House streaming API. Contains public sector information licensed under the Open Government Licence v3.0.</p></section>`;
+}
+if (typeof PAGES !== 'undefined' && PAGES.registry) {
+  const _rg = PAGES.registry;
+  PAGES.registry = (pg, p) => {
+    _rg(pg, p);
+    try {
+      if (p || REG.q) return;
+      pg.insertAdjacentHTML('beforeend', allotPanel()); allotLoad(pg);
+      on(pg, 'input', '#allotQ', (e, el) => { ALLOT.q = el.value; const box = document.getElementById('allotP'); if (box) { const pos = el.selectionStart; box.outerHTML = allotPanel(); const n = document.getElementById('allotQ'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } } });
+    } catch (e) { console.error(e); }
+  };
+}
