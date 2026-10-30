@@ -9,7 +9,7 @@
  */
 import { inflateRawSync } from "node:zlib";
 
-function unzip(buf: Buffer): Map<string, Buffer> {
+export function unzip(buf: Buffer): Map<string, Buffer> {
   // End of central directory record: signature 0x06054b50, within the last 64 KB.
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }

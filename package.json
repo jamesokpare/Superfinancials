@@ -31,7 +31,8 @@
     "postgres": "^3.4.9",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "unpdf": "^2.1.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.13",
