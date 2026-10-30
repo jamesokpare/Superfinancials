@@ -174,7 +174,7 @@ const ten = C.get("auto-ust-2026-11-10-91282CNX5");
 t("Treasury auctions: title, amount, category", ten?.title === "U.S. Treasury 10-Year Note auction (reopening)" && /US\$42\.0 bn/.test(String(ten?.notes)) && ten?.cat === "auc" && ten?.imp === 2, ten);
 t("calendar: owner events kept; stale and rescheduled auto events removed", C.has("desk-1") && !C.has("auto-ust-2026-11-03-OLD") && !C.has("auto-fred-10-2026-01-01") && r.events.removed === 2, [...C.keys()]);
 const meta = (await store.list("macrosync"))[0]?.data;
-t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total + r.funds.total && /24 of 24 sources/.test(String(meta?.note)), meta);
+t("run summary for the health check", meta?.n === r.series.written + r.series.unchanged + r.events.written + r.companies.total + r.funds.total && /25 of 25 sources/.test(String(meta?.note)), meta);
 
 const cpi = C.get("auto-eco-2026-11-12-us-cpi-yoy-oct");
 t("economic calendar: consensus, prior, time; low-importance and unknown countries dropped", cpi?.cons === "3.1" && cpi?.prior === "3" && cpi?.actual === "" && cpi?.time === "13:30" && cpi?.imp === 3 && ![...C.keys()].some((k) => /minor-survey|unknown-place/.test(k)), cpi);
