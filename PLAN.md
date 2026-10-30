@@ -63,6 +63,7 @@ We move it in stages so the app keeps working at every step.
 - ✅ Real-data mode: no fictional private companies or funds, and no simulated-only instruments, outside the demo workspace.
 - ✅ Second round of sources (see `docs/data-sources-research.md`): OECD CPI fix, BIS CPI, World Bank Pink Sheet and SMARD prices for commodities without a feed, Eurostat/BLS release calendars, EIA inventories, official press-release feeds in Market news, Norway and France in Company registry.
 - ✅ Third round (see `docs/data-sources-deeper-sweep.md`): fixes for the five failing feeds (OECD batches and COICOP 2018, Pink Sheet workbook, new Eurostat calendar, contact User-Agent for SEC and BLS); official rates instead of FRED (Treasury curve, NY Fed SOFR/EFFR, BoE SONIA and gilts, BoC yields and CORRA, ECB €STR); CFTC positioning; Form D pooled funds as "Funds raising now"; startup and deal news feeds.
+- ✅ EODHD stock splits and dividend fallback in the calendar; Alpha Vantage and EODHD news with sentiment; EODHD intraday bars and delayed quotes on security pages; Companies House officer search and appointments; a company-number column in the private-company import; live connection status and each sync's last run on the Data sources and landing pages.
 - ✅ African markets (`src/lib/africa/`, daily cron): NGX session summary, movers, most active, pan-African movers, ETFs and NASD OTC securities on Movers; NGX corporate disclosures and company news in Market news; NGX dividends and African elections in the calendar; Africa API country profile and trade on Country data.
 - ✅ Daily macro sync (`src/lib/macro/`): World Bank, BIS, ECB, OECD series; FRED, Treasury, FMP/EODHD economic, dividend and IPO calendars; SEC Form D private placements.
 
@@ -80,7 +81,6 @@ mocked responses.
   paid plans; the syncs fall back, but coverage depends on the plans.
 - ✅ **CI**: GitHub Actions runs lint, typecheck, tests and build on every PR.
 - ✅ **Sync health**: a daily workflow fails (and emails) when a sync is stale or empty.
-  Still to do: show each sync's last run on the Data sources page.
 - ✅ **Live dry run**: the "Data dry run" workflow runs the syncs against the real APIs.
 
 ## Remaining: data still simulated
@@ -111,9 +111,8 @@ mocked responses.
 
 ## Remaining: connected but unused
 
-- EODHD: intraday and real-time bars, news, dividends/splits/IPO calendars, macro indicators.
-- Alpha Vantage: news sentiment, technical indicators.
-- Africa API: country indicators (World Bank already covers them) and policy data.
-- Companies House: officer search; a company-number column in the data-desk import template.
-- The Data sources page and landing page still describe providers as "planned" or "server only";
-  they should read their status from `/api/providers`.
+Everything the connected APIs offer that fits the app is now wired. Left out on purpose:
+
+- EODHD macro indicators: the same World Bank series the macro sync already reads.
+- Alpha Vantage technical indicators: the app computes RSI, moving averages and the rest from the price series itself.
+- Africa API country indicators: also World Bank data; its policy data has no place in the app yet.

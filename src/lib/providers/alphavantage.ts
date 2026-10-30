@@ -48,7 +48,7 @@ export function createAlphaVantage(apiKey = requireKey(NAME, ENV), opts: FetchOp
     economic: (fn: string, params: Query = {}) => query(fn, params),
     /** Commodities: WTI, BRENT, NATURAL_GAS, COPPER, ... */
     commodity: (fn: string, interval: "daily" | "weekly" | "monthly" = "monthly") => query(fn, { interval }),
-    news: (params: { tickers?: string; topics?: string; time_from?: string; limit?: number } = {}) => query("NEWS_SENTIMENT", params),
+    news: (params: { tickers?: string; topics?: string; time_from?: string; sort?: "LATEST" | "EARLIEST" | "RELEVANCE"; limit?: number } = {}) => query("NEWS_SENTIMENT", params),
     topMovers: () => query("TOP_GAINERS_LOSERS"),
     ping: () => query<GlobalQuote>("GLOBAL_QUOTE", { symbol: "IBM" }),
   };

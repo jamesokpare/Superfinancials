@@ -235,14 +235,48 @@ export async function econCalendar(now: Date, countries: Set<string>): Promise<C
 }
 
 type FmpDiv = { symbol?: string; date?: string; recordDate?: string; paymentDate?: string; declarationDate?: string; dividend?: unknown; adjDividend?: unknown; yield?: unknown; frequency?: string };
-/** Ex-dividend dates for the tracked U.S. stocks and ETFs, next 60 days. */
+type EodDiv = { code?: string; date?: string; recordDate?: string; paymentDate?: string; declarationDate?: string; value?: unknown; unadjustedValue?: unknown; currency?: string; period?: string };
+const trackedIds = () => new Map<string, string>([...US_EQUITIES.split(" ").map((t) => [t, `EQ.${t}`] as const), ...ETF.split(" ").map((t) => [t, `ET.${t}`] as const)]);
+/** Ex-dividend dates for the tracked U.S. stocks and ETFs, next 60 days (FMP, else EODHD). */
 export async function dividendCalendar(now: Date): Promise<CalEvent[]> {
-  const ids = new Map<string, string>([...US_EQUITIES.split(" ").map((t) => [t, `EQ.${t}`] as const), ...ETF.split(" ").map((t) => [t, `ET.${t}`] as const)]);
-  const rows = await fmp<FmpDiv[]>("/dividends-calendar", { from: dayAdd(now, -3), to: dayAdd(now, 60) });
-  return rows.flatMap((x) => {
-    const id = ids.get(String(x.symbol ?? "")); const dt = splitDt(String(x.date ?? "")); const amt = num(x.dividend ?? x.adjDividend);
-    if (!id || !dt) return [];
-    return [{ id: `div-${dt.date}-${slug(String(x.symbol))}`, title: `${x.symbol} ex-dividend${amt ? ` ($${amt})` : ""}`, date: dt.date, cc: "US", cat: "div", imp: 1 as const, unit: "US$", srcName: "Financial Modeling Prep dividend calendar", url: "https://site.financialmodelingprep.com/developer/docs/stable/dividends-calendar", notes: `Record date ${x.recordDate || "—"}, payment ${x.paymentDate || "—"}${x.frequency ? `, ${String(x.frequency).toLowerCase()}` : ""}${num(x.yield) ? `; yield ${Number(x.yield).toFixed(2)}%` : ""}.`, ids: [id] }];
+  const ids = trackedIds(); const from = dayAdd(now, -3), to = dayAdd(now, 60);
+  const mk = (sym: string, date: string, amt: string, x: { rec?: string; pay?: string; extra?: string }, src: string, url: string): CalEvent[] => {
+    const id = ids.get(sym); if (!id) return [];
+    return [{ id: `div-${date}-${slug(sym)}`, title: `${sym} ex-dividend${amt ? ` ($${amt})` : ""}`, date, cc: "US", cat: "div", imp: 1 as const, unit: "US$", srcName: src, url, ids: [id],
+      notes: `Record date ${x.rec || "—"}, payment ${x.pay || "—"}${x.extra ?? ""}.` }];
+  };
+  return firstOf<CalEvent[]>([
+    ["FMP", "FMP_API_KEY", async () => (await fmp<FmpDiv[]>("/dividends-calendar", { from, to })).flatMap((x) => {
+      const dt = splitDt(String(x.date ?? "")); if (!dt) return [];
+      return mk(String(x.symbol ?? ""), dt.date, num(x.dividend ?? x.adjDividend), { rec: x.recordDate, pay: x.paymentDate, extra: `${x.frequency ? `, ${String(x.frequency).toLowerCase()}` : ""}${num(x.yield) ? `; yield ${Number(x.yield).toFixed(2)}%` : ""}` }, "Financial Modeling Prep dividend calendar", "https://site.financialmodelingprep.com/developer/docs/stable/dividends-calendar");
+    })],
+    ["EODHD", "EODHD_API_KEY", async () => {
+      const out: CalEvent[] = [];
+      // JSON:API paging, 1,000 rows a page; a 63-day window across all U.S. listings is a few pages.
+      for (let off = 0; off < 10_000; off += 1000) {
+        const r = await eod<{ data?: EodDiv[]; meta?: { total?: number } }>("/calendar/dividends", { "filter[date_from]": from, "filter[date_to]": to, "page[limit]": 1000, "page[offset]": off });
+        for (const x of r.data ?? []) {
+          const code = String(x.code ?? ""); if (!code.endsWith(".US")) continue; const dt = splitDt(String(x.date ?? "")); if (!dt) continue;
+          out.push(...mk(code.slice(0, -3), dt.date, num(x.value ?? x.unadjustedValue), { rec: x.recordDate, pay: x.paymentDate, extra: x.period ? `, ${String(x.period).toLowerCase()}` : "" }, "EODHD dividend calendar", "https://eodhd.com/financial-apis/calendar-upcoming-earnings-ipos-and-splits-api"));
+        }
+        if (!r.data || r.data.length < 1000 || off + 1000 >= (r.meta?.total ?? 0)) break;
+      }
+      return out;
+    }],
+  ]);
+}
+
+type EodSplit = { code?: string; split?: string; date?: string; old_shares?: unknown; new_shares?: unknown; optionable?: string };
+/** Stock splits for the tracked U.S. stocks and ETFs, last week to 90 days ahead (EODHD). */
+export async function splitCalendar(now: Date): Promise<CalEvent[]> {
+  const ids = trackedIds();
+  const r = await eod<{ splits?: EodSplit[] }>("/calendar/splits", { from: dayAdd(now, -7), to: dayAdd(now, 90) });
+  return (r.splits ?? []).flatMap((x) => {
+    const code = String(x.code ?? ""); const sym = code.replace(/\.US$/, ""); const id = ids.get(sym); const dt = splitDt(String(x.date ?? ""));
+    if (!id || !code.endsWith(".US") || !dt) return [];
+    // EODHD writes a split as "new/old" (e.g. "4.000000/1.000000" for 4-for-1).
+    const [a, b] = String(x.split ?? "").split("/").map(Number); const ratio = Number.isFinite(a) && Number.isFinite(b) && a > 0 && b > 0 ? (a >= b ? `${+a.toFixed(4)}-for-${+b.toFixed(4)}` : `1-for-${+(b / a).toFixed(4)} reverse`) : String(x.split ?? "");
+    return [{ id: `spl-${dt.date}-${slug(sym)}`, title: `${sym} ${ratio} stock split`, date: dt.date, cc: "US", cat: "spl", imp: 2 as const, srcName: "EODHD splits calendar", url: "https://eodhd.com/financial-apis/calendar-upcoming-earnings-ipos-and-splits-api", ids: [id], notes: `Split ratio ${x.split ?? "—"} (new/old shares).` }];
   });
 }
 
