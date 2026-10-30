@@ -29,6 +29,8 @@ import { fetchFrame } from "../src/lib/sec/frames";
 import { fetchDataset, pastQuarters, readDataset } from "../src/lib/sec/datasets";
 import { cbnMoneyMarket, dmoAuctions } from "../src/lib/africa/ngdebt";
 import { calpers, oregon, wsib } from "../src/lib/pensions/index";
+import { eexEuaAuctions, embStats } from "../src/lib/macro/spreads";
+import { cbNoticeEvents } from "../src/lib/macro/cbnotices";
 
 for (const f of [".env.local", ".env"]) if (existsSync(f)) process.loadEnvFile(f);
 const only = process.argv.find((a) => a.startsWith("--only"))?.split("=")[1]?.split(",").map((s) => s.trim()).filter(Boolean);
@@ -124,6 +126,9 @@ const probes: Probe[] = [
   ["nbs", "pmi-releases", null, async () => series(await nbsPmi(2))],
   ["ecb-boc", "fx-forward-inputs", null, async () => pts(await fxForwardInputs(new Date()) as Record<string, { t: string; v: number }[]>)],
   ["cboe", "vix-curve-files", null, async () => pts(await vixLevels(new Date()) as Record<string, { t: string; v: number }[]>)],
+  ["ishares", "emb-yield-duration", null, async () => embStats()],
+  ["eex", "eua-auctions", null, async () => series(await eexEuaAuctions(new Date()))],
+  ["central-banks", "meeting-notices", null, async () => { const r = await cbNoticeEvents(new Date(), new Set()); return { errors: r.errors, ...list(r.events.map((e) => ({ title: e.title, date: e.date, url: e.url }))) }; }],
   // International filings
   ["edinet", "documents", "EDINET_API_KEY", async () => list(await edinet(new Date(), 1))],
   ["opendart", "list", "OPENDART_API_KEY", async () => list(await openDart(new Date(), 2, 1))],

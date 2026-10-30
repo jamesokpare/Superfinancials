@@ -1,8 +1,8 @@
 /**
  * Monetary-policy decision dates from the central banks' own published calendars, curated by hand
  * (no bank offers a reliable machine feed). Dates are decision/announcement days. Only dates seen on
- * an official calendar or consistently reported are listed; banks that have not published (CBN, CBK,
- * Bank of Ghana, CBE, Banxico) are left out rather than guessed. Re-check yearly: most G10 banks
+ * an official calendar or consistently reported are listed. Banks that announce meetings only in
+ * notices (CBN, CBK, Bank of Ghana, CBE, Banxico) are read from those notices by cbnotices.ts. Re-check yearly: most G10 banks
  * publish the next year's dates between June and September; BI, Banxico, BoG and CBN in Dec–Jan.
  * Last reviewed: 30 Oct 2026.
  */

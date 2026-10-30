@@ -21,7 +21,9 @@ import { scrub } from "@/lib/providers";
 import { envKey } from "@/lib/providers/http";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
 import { formDFiling, formDIndex, type FormD } from "./formd";
-import { cbCalendarEvents } from "./cbcal";
+import { cbCalendarEvents, CB_CALENDAR } from "./cbcal";
+import { cbNoticeEvents } from "./cbnotices";
+import { eexEuaAuctions, embSpread, embStats, UST_MATURITY, type EmbStats } from "./spreads";
 import { boc, boe, cftcCot, estr, nyFed, treasuryCurve } from "./rates";
 import { boeImpliedInflation, ecbSpf, ecSentiment, nbsPmi, oecdCli, type KeptSeries } from "./surveys";
 import { cipForwards, fxForwardInputs, policyPath, vixLevels, vixRatios, type Bills, type CipInputs, type VixLevels } from "./derived";
@@ -31,10 +33,10 @@ export const GEN = "macro-sync";
 /** Countries the app knows (Country data hub), app codes. */
 export const MACRO_COUNTRIES = "AF AO AR AT AU BD BE BF BJ BR BW CA CD CG CH CI CL CM CN CO CV CZ DE DK DZ EG ES ET EU FI FR GA GH GM GN GR HK HU ID IE IL IN IQ IR IT JM JO JP KE KR KW KZ LB LK LR LY MA MG ML MU MW MX MY MZ NA NE NG NL NO NZ OM PE PH PK PL PT QA RO RU RW SA SD SE SG SL SN SS TG TH TN TR TW TZ UA AE UG UK US UY VE VN ZA ZM ZW".split(" ");
 
-export type MacroSourceId = "worldbank" | "imf" | "nber" | "fred-series" | "proxies" | "cb-calendar" | "bis" | "ecb" | "oecd" | "fred-calendar" | "treasury" | "econ-calendar" | "dividends" | "splits" | "ipos" | "sec-formd" | "bis-cpi" | "release-calendars" | "commodities" | "power" | "eia" | "oecd-cli" | "ec-sentiment" | "ecb-spf" | "nbs-pmi" | "treasury-curve" | "nyfed" | "boe" | "boc" | "estr" | "cftc" | "boe-inflation" | "fx-forwards" | "vix-curve";
+export type MacroSourceId = "worldbank" | "imf" | "nber" | "fred-series" | "proxies" | "cb-calendar" | "bis" | "ecb" | "oecd" | "fred-calendar" | "treasury" | "econ-calendar" | "dividends" | "splits" | "ipos" | "sec-formd" | "bis-cpi" | "release-calendars" | "commodities" | "power" | "eia" | "oecd-cli" | "ec-sentiment" | "ecb-spf" | "nbs-pmi" | "treasury-curve" | "nyfed" | "boe" | "boc" | "estr" | "cftc" | "boe-inflation" | "fx-forwards" | "vix-curve" | "cb-notices" | "eu-carbon" | "emb-spread";
 type State = Record<string, unknown>;
 /** Inputs for calculated series that are used in this run but not stored as they are (bill yields, Cboe index levels). */
-type Aux = { bills?: Bills; cip?: CipInputs; vix?: VixLevels };
+type Aux = { bills?: Bills; cip?: CipInputs; vix?: VixLevels; emb?: EmbStats };
 type Fetched = { series?: (MacroSeries & { keep?: boolean })[]; events?: CalEvent[]; companies?: FormD[]; instruments?: InstSeries[]; state?: State; aux?: Aux };
 const intEnv = (k: string, d: number) => { const n = Number(process.env[k]); return process.env[k] && Number.isFinite(n) && n >= 0 ? n : d; };
 const isoDay = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -94,6 +96,11 @@ export const MACRO_SOURCES: { id: MacroSourceId; name: string; needs?: string; g
   { id: "ec-sentiment", name: "European Commission economic sentiment (Eurostat)", run: async (now) => ({ series: await ecSentiment(`${now.getUTCFullYear() - 10}-01`, new Set(MACRO_COUNTRIES)) }) },
   { id: "ecb-spf", name: "ECB Survey of Professional Forecasters", run: async (now) => ({ series: await ecbSpf(now.getUTCFullYear() - 15) }) },
   { id: "nbs-pmi", name: "China official PMI (NBS press releases)", run: async () => ({ series: await nbsPmi() }) },
+  { id: "cb-notices", name: "Central-bank meeting notices (CBN, CBK, BoG, CBE, Banxico)", run: async (now) => {
+    const known = new Set(CB_CALENDAR.flatMap((b) => b.dates.map((d) => `${b.cc}|${d}`)));
+    const r = await cbNoticeEvents(now, known); if (r.errors.length >= 5) throw new Error(r.errors.join("; ")); return { events: r.events };
+  } },
+  { id: "eu-carbon", name: "EU carbon: EEX EUA primary auctions", run: async (now) => ({ series: (await eexEuaAuctions(now)).map((x) => ({ ...x, keep: true })) }) },
   // Official rates (run by the second daily cron, ?group=rates, so each run stays inside the time limit)
   { id: "treasury-curve", name: "U.S. Treasury yield curve", group: "rates", run: async (now) => { const bills: Bills = {}; return { instruments: await treasuryCurve(now, 2, bills), aux: { bills } }; } },
   { id: "nyfed", name: "New York Fed SOFR and EFFR", group: "rates", run: async (now) => nyFed(now) },
@@ -104,10 +111,11 @@ export const MACRO_SOURCES: { id: MacroSourceId; name: string; needs?: string; g
   { id: "boe-inflation", name: "Bank of England implied inflation curve", group: "rates", run: async (now, state) => boeImpliedInflation(now, state) },
   { id: "fx-forwards", name: "FX forward inputs (ECB, Bank of Canada) for CIP forwards", group: "rates", run: async (now) => ({ aux: { cip: await fxForwardInputs(now) } }) },
   { id: "vix-curve", name: "Cboe VIX term structure (ratios only)", group: "rates", run: async (now) => ({ aux: { vix: await vixLevels(now) } }) },
+  { id: "emb-spread", name: "EM sovereign spread proxy (iShares EMB vs Treasuries)", group: "rates", run: async () => ({ aux: { emb: await embStats() } }) },
 ];
 export type MacroGroup = "core" | "rates";
 /** Which source writes each kind of calendar event (by id prefix), so a source that answered can retire its own stale events. */
-const EVENT_SOURCE: [string, MacroSourceId][] = [["auto-fred-", "fred-calendar"], ["auto-ust-", "treasury"], ["auto-eco-", "econ-calendar"], ["auto-div-", "dividends"], ["auto-cbcal-", "cb-calendar"], ["auto-spl-", "splits"], ["auto-ipo-", "ipos"], ["auto-estat-", "release-calendars"], ["auto-bls-", "release-calendars"]];
+const EVENT_SOURCE: [string, MacroSourceId][] = [["auto-fred-", "fred-calendar"], ["auto-ust-", "treasury"], ["auto-eco-", "econ-calendar"], ["auto-div-", "dividends"], ["auto-cbcal-", "cb-calendar"], ["auto-cbn-", "cb-notices"], ["auto-spl-", "splits"], ["auto-ipo-", "ipos"], ["auto-estat-", "release-calendars"], ["auto-bls-", "release-calendars"]];
 
 export type MacroReport = {
   date: string; dryRun: boolean; store: string;
@@ -139,7 +147,7 @@ export async function runMacroSync(opts: { store?: DocStore; dryRun?: boolean; n
   // 2. series → adm_series docs
   const existing = new Map((await store.list("adm_series")).map((d) => [d.id, d.data]));
   // 1b. calculated series from this run's inputs (and stored ones where a source ran in the other group)
-  const derived = await deriveSeries(aux, series, existing, store);
+  const derived = await deriveSeries(aux, series, existing, store, insts);
   for (const [id, n] of Object.entries(derived.counts)) if (report.sources[id]) report.sources[id].series += n;
   series.push(...derived.series);
   // Indicators the owner already feeds into the macro panels, per country: those stay the owner's.
@@ -252,14 +260,24 @@ async function histCloses(store: DocStore, id: string): Promise<Point[]> {
   }
   return best;
 }
-async function deriveSeries(aux: Aux, series: MacroSeries[], existing: Map<string, Record<string, unknown>>, store: DocStore): Promise<{ series: MacroSeries[]; counts: Record<string, number> }> {
-  const out: MacroSeries[] = []; const counts: Record<string, number> = {};
+async function deriveSeries(aux: Aux, series: MacroSeries[], existing: Map<string, Record<string, unknown>>, store: DocStore, insts: InstSeries[] = []): Promise<{ series: KeptSeries[]; counts: Record<string, number> }> {
+  const out: KeptSeries[] = []; const counts: Record<string, number> = {};
   const find = (cc: string, code: string) => series.find((x) => x.cc === cc && x.code === code)?.points ?? docPts(existing.get(`${cc}.${code}`));
   if (aux.bills) { const s = policyPath(aux.bills, find("US", "EFFR")); out.push(...s); counts["treasury-curve"] = s.length; }
   if (aux.cip) {
     let { m3, y1 } = aux.bills ?? {};
     if (!m3?.length || !y1?.length) { const inst = new Map((await store.list("adm_inst")).map((d) => [d.id, d.data])); const ip = (id: string) => { const x = inst.get(id); return x && Array.isArray(x.d) && Array.isArray(x.c) ? (x.d as string[]).map((t, i) => ({ t, v: Number((x.c as number[])[i]) })) : []; }; m3 = ip("YD.US3M"); y1 = ip("YD.US1Y"); }
     const s = cipForwards({ ...aux.cip, usd3m: m3, usd1y: y1 }); out.push(...s); counts["fx-forwards"] = s.length;
+  }
+  if (aux.emb) {
+    const fetched = new Map(insts.map((x) => [x.id, x.points])); let stored: Map<string, Record<string, unknown>> | null = null;
+    const ust: Record<string, Point[]> = {};
+    for (const id of Object.keys(UST_MATURITY)) {
+      let p = fetched.get(id);
+      if (!p?.length) { stored ??= new Map((await store.list("adm_inst")).map((d) => [d.id, d.data])); const x = stored.get(id); p = x && Array.isArray(x.d) && Array.isArray(x.c) ? (x.d as string[]).map((t, i) => ({ t, v: Number((x.c as number[])[i]) })) : []; }
+      ust[id] = p;
+    }
+    const s = embSpread(aux.emb, ust).map((x) => ({ ...x, keep: true })); out.push(...s); counts["emb-spread"] = s.length;
   }
   if (aux.vix) { const s = vixRatios(aux.vix, await histCloses(store, "IX.SPX")); out.push(...s); counts["vix-curve"] = s.length; }
   return { series: out, counts };
