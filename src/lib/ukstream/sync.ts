@@ -39,7 +39,10 @@ export type Allot = {
   /** State of the PDF read: ok, no-text (scanned), unparsed, error, none (no document). */
   pdf?: "ok" | "no-text" | "unparsed" | "error" | "none";
   tries?: number;
+  /** Implied value of the company at this round's price: price paid per share × total shares in issue afterwards. */
+  implied?: Implied | null;
 };
+export type Implied = { ccy: string; price: number; shares: number; value: number };
 const COL = "ukalloc";
 const STREAM = "https://stream.companieshouse.gov.uk/filings";
 
@@ -86,6 +89,25 @@ export function readSh01(text: string): Raised[] {
   }
   return out;
 }
+/** Total shares in issue after the allotment, from the SH01's statement of capital ("Total number of shares: …"). */
+export function readSh01Total(text: string): number | null {
+  const parts = text.replace(/\r/g, "").split(/statement of capital/i); if (parts.length < 2) return null;
+  const tail = parts.slice(1).join(" ");
+  const all = [...tail.matchAll(/total number of shares(?: in issue)?\s*:?\s*([\d,]{1,20})/gi)].map((m) => Number(m[1].replace(/,/g, ""))).filter((v) => v > 0);
+  return all.length ? Math.max(...all) : null;
+}
+/**
+ * Implied valuation: the price paid per share in this allotment × all shares in issue afterwards. Only when the
+ * allotment is in one currency (the highest price paid is used if classes differ). Labelled "implied" in the app:
+ * it treats every class as worth this round's price, and an allotment at nominal value (no premium) says little.
+ */
+export function impliedValue(raised: Raised[] | null | undefined, total: number | null): Implied | null {
+  if (!raised?.length || !total) return null; const ccys = new Set(raised.map((r) => r.ccy)); if (ccys.size !== 1) return null;
+  const price = Math.max(...raised.map((r) => r.paid)); if (!(price > 0)) return null;
+  if (raised.every((r) => r.nominal != null && r.paid <= r.nominal)) return null; // issued at par: no market price
+  return { ccy: [...ccys][0], price, shares: total, value: Number((price * total).toFixed(0)) };
+}
+
 /** Document API content URL from a metadata URL (any of the API's host names) or a document id. */
 export function docContentUrl(meta: string): string | null {
   const id = /\/document\/([A-Za-z0-9_\-]+)/.exec(meta)?.[1] ?? (/^[A-Za-z0-9_\-]{10,}$/.test(meta) ? meta : null);
@@ -110,7 +132,7 @@ export async function readAmount(a: Allot, key: string, read: (b: Buffer) => Pro
     if (buf.toString("latin1", 0, 5) !== "%PDF-") { a.pdf = "error"; return; }
     const text = await read(buf);
     if (text.replace(/\s/g, "").length < 40) { a.pdf = "no-text"; a.raised = null; return; }
-    const r = readSh01(text); a.raised = r.length ? r : null; a.pdf = r.length ? "ok" : "unparsed";
+    const r = readSh01(text); a.raised = r.length ? r : null; a.pdf = r.length ? "ok" : "unparsed"; a.implied = impliedValue(a.raised, readSh01Total(text));
   } catch { a.pdf = "error"; }
 }
 

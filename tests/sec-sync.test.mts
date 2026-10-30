@@ -4,7 +4,7 @@
 // entries kept; retirement; dry runs.
 // Run: npm test
 import { deflateRawSync } from "node:zlib";
-import { framePlan, lastQuarters } from "../src/lib/sec/frames";
+import { fillQ4, framePlan, lastQuarters } from "../src/lib/sec/frames";
 import { isoDate, pastQuarters, readDataset } from "../src/lib/sec/datasets";
 import { runSecSync } from "../src/lib/sec/sync";
 import { memoryStore } from "../src/lib/market/store";
@@ -113,5 +113,11 @@ delete process.env.SEC_USER_AGENT;
 let msg = ""; try { await runSecSync({ store: memoryStore(), now: NOW }); } catch (err) { msg = (err as Error).message; }
 t("needs a contact User-Agent", /SEC_USER_AGENT/.test(msg), msg);
 
+const Q = (p: string, e: string, rev: number, eps: number) => ({ p, e, rev, eps });
+const co4 = fillQ4({ cik: 1, name: "X", q: [Q("CY2025Q1", "2025-03-31", 100, 1), Q("CY2025Q2", "2025-06-30", 110, 1.1), Q("CY2025Q3", "2025-09-30", 120, 1.2)], fy: [Q("CY2025", "2025-12-31", 470, 4.6), Q("CY2024", "2024-12-31", 400, 4)] });
+const q4 = co4.q.find((r) => r.p === "CY2025Q4");
+t("Q4 derived from the year minus three quarters, marked, dated after Q3", q4?.rev === 140 && q4?.eps === 1.3 && q4?.dq === 1 && q4?.s === "2025-10-01" && q4?.e === "2025-12-31" && !co4.q.some((r) => r.p === "CY2024Q4"), co4.q);
+const off = fillQ4({ cik: 1, name: "X", q: [Q("CY2025Q1", "2025-03-31", 1, 0), Q("CY2025Q2", "2025-06-30", 1, 0), Q("CY2025Q3", "2025-09-30", 1, 0)], fy: [Q("CY2025", "2026-06-30", 9, 0)] });
+t("no Q4 when the year doesn't end a quarter after Q3; a reported Q4 is never replaced", !off.q.some((r) => r.p === "CY2025Q4") && fillQ4({ cik: 1, name: "X", q: [...co4.q.filter((r) => !r.dq), Q("CY2025Q4", "2025-12-31", 999, 9)], fy: co4.fy }).q.find((r) => r.p === "CY2025Q4")?.rev === 999);
 console.log(fails ? `\n${fails} sec-sync test(s) failed` : "\nAll sec-sync tests passed");
 process.exit(fails ? 1 : 0);

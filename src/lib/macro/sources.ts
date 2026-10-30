@@ -602,8 +602,8 @@ export async function fredSeriesList(specs: FredSpec2[] = FRED_SERIES, now = new
  * Exchange-traded funds that track a benchmark the app can't show without a licence. Each becomes a
  * data-desk instrument named as a proxy, with a note saying what it is and who owns the real benchmark.
  */
-export const PROXIES: { id: string; sym: string; tk: string; name: string; exch: string; of: string; owner: string }[] = [
-  { id: "AD.PX.SRUUF", sym: "SRUUF.US", tk: "SRUUF", name: "Sprott Physical Uranium Trust (uranium proxy)", exch: "OTC (TSX: U.UN)", of: "the U3O8 spot price", owner: "UxC and TradeTech (licensed)" },
+export const PROXIES: { id: string; sym: string; tk: string; name: string; exch: string; of: string; owner: string; ref?: string }[] = [
+  { id: "AD.PX.SRUUF", sym: "SRUUF.US", tk: "SRUUF", name: "Sprott Physical Uranium Trust (uranium proxy)", exch: "OTC (TSX: U.UN)", of: "the U3O8 spot price", owner: "UxC and TradeTech (licensed)", ref: "Monthly average spot and long-term prices from UxC and TradeTech are shown, with their permission, at https://www.cameco.com/invest/markets/uranium-price" },
   { id: "AD.PX.URNM", sym: "URNM.US", tk: "URNM", name: "Sprott Uranium Miners ETF (uranium proxy)", exch: "NYSE Arca", of: "uranium prices, through uranium miners", owner: "UxC and TradeTech (licensed)" },
   { id: "AD.PX.LIT", sym: "LIT.US", tk: "LIT", name: "Global X Lithium & Battery Tech ETF (lithium proxy)", exch: "NYSE Arca", of: "lithium prices, through lithium and battery equities", owner: "Fastmarkets, Benchmark, SMM (licensed)" },
   { id: "AD.PX.KRBN", sym: "KRBN.US", tk: "KRBN", name: "KraneShares Global Carbon ETF (carbon proxy)", exch: "NYSE Arca", of: "carbon allowance prices (EUA, CCA, UKA, RGGI futures)", owner: "ICE and EEX (licensed)" },
@@ -620,7 +620,7 @@ export async function proxyPrices(now: Date): Promise<InstSeries[]> {
     try {
       const rows = await eod<EodRow[]>(`/eod/${p.sym}`, { from, period: "d", order: "a" });
       const points = (Array.isArray(rows) ? rows : []).flatMap((r) => { const v = Number(r.adjusted_close ?? r.close); return r.date && Number.isFinite(v) && v > 0 ? [{ t: String(r.date).slice(0, 10), v }] : []; });
-      if (points.length) out.push({ id: p.id, points, src: `EODHD end-of-day prices (${p.sym})`, note: `Proxy, not the benchmark: the price of ${p.tk}, an exchange-traded product that tracks ${p.of}. The benchmark itself belongs to ${p.owner}.`,
+      if (points.length) out.push({ id: p.id, points, src: `EODHD end-of-day prices (${p.sym})`, note: `Proxy, not the benchmark: the price of ${p.tk}, an exchange-traded product that tracks ${p.of}. The benchmark itself belongs to ${p.owner}.${p.ref ? ` ${p.ref}.` : ""}`,
         meta: { type: "etf", tk: p.tk, name: p.name, exch: p.exch, country: "US", ccy: "USD", sector: "Commodity proxies", industry: "Exchange-traded product" } });
     } catch (e) { errors.push(`${p.sym}: ${(e as Error).message}`); }
   }

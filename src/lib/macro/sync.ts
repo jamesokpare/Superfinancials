@@ -23,6 +23,8 @@ import { openStore, type Doc, type DocStore } from "@/lib/market/store";
 import { formDFiling, formDIndex, type FormD } from "./formd";
 import { cbCalendarEvents, CB_CALENDAR } from "./cbcal";
 import { cbNoticeEvents } from "./cbnotices";
+import { carbAuctions, rggiAuctions } from "./carbon";
+import { damodaranCountryRisk } from "./countryrisk";
 import { eexEuaAuctions, embSpread, embStats, UST_MATURITY, type EmbStats } from "./spreads";
 import { boc, boe, cftcCot, estr, nyFed, treasuryCurve } from "./rates";
 import { boeImpliedInflation, ecbSpf, ecSentiment, nbsPmi, oecdCli, type KeptSeries } from "./surveys";
@@ -33,7 +35,7 @@ export const GEN = "macro-sync";
 /** Countries the app knows (Country data hub), app codes. */
 export const MACRO_COUNTRIES = "AF AO AR AT AU BD BE BF BJ BR BW CA CD CG CH CI CL CM CN CO CV CZ DE DK DZ EG ES ET EU FI FR GA GH GM GN GR HK HU ID IE IL IN IQ IR IT JM JO JP KE KR KW KZ LB LK LR LY MA MG ML MU MW MX MY MZ NA NE NG NL NO NZ OM PE PH PK PL PT QA RO RU RW SA SD SE SG SL SN SS TG TH TN TR TW TZ UA AE UG UK US UY VE VN ZA ZM ZW".split(" ");
 
-export type MacroSourceId = "worldbank" | "imf" | "nber" | "fred-series" | "proxies" | "cb-calendar" | "bis" | "ecb" | "oecd" | "fred-calendar" | "treasury" | "econ-calendar" | "dividends" | "splits" | "ipos" | "sec-formd" | "bis-cpi" | "release-calendars" | "commodities" | "power" | "eia" | "oecd-cli" | "ec-sentiment" | "ecb-spf" | "nbs-pmi" | "treasury-curve" | "nyfed" | "boe" | "boc" | "estr" | "cftc" | "boe-inflation" | "fx-forwards" | "vix-curve" | "cb-notices" | "eu-carbon" | "emb-spread";
+export type MacroSourceId = "worldbank" | "imf" | "nber" | "fred-series" | "proxies" | "cb-calendar" | "bis" | "ecb" | "oecd" | "fred-calendar" | "treasury" | "econ-calendar" | "dividends" | "splits" | "ipos" | "sec-formd" | "bis-cpi" | "release-calendars" | "commodities" | "power" | "eia" | "oecd-cli" | "ec-sentiment" | "ecb-spf" | "nbs-pmi" | "treasury-curve" | "nyfed" | "boe" | "boc" | "estr" | "cftc" | "boe-inflation" | "fx-forwards" | "vix-curve" | "cb-notices" | "eu-carbon" | "emb-spread" | "rggi" | "carb" | "country-risk";
 type State = Record<string, unknown>;
 /** Inputs for calculated series that are used in this run but not stored as they are (bill yields, Cboe index levels). */
 type Aux = { bills?: Bills; cip?: CipInputs; vix?: VixLevels; emb?: EmbStats };
@@ -101,6 +103,9 @@ export const MACRO_SOURCES: { id: MacroSourceId; name: string; needs?: string; g
     const r = await cbNoticeEvents(now, known); if (r.errors.length >= 5) throw new Error(r.errors.join("; ")); return { events: r.events };
   } },
   { id: "eu-carbon", name: "EU carbon: EEX EUA primary auctions", run: async (now) => ({ series: (await eexEuaAuctions(now)).map((x) => ({ ...x, keep: true })) }) },
+  { id: "rggi", name: "RGGI carbon auctions", run: async () => ({ series: (await rggiAuctions()).map((x) => ({ ...x, keep: true })) }) },
+  { id: "carb", name: "California–Québec carbon auctions (CARB)", run: async () => ({ series: (await carbAuctions()).map((x) => ({ ...x, keep: true })) }) },
+  { id: "country-risk", name: "Country risk premiums (Damodaran, NYU Stern)", run: async () => ({ series: (await damodaranCountryRisk(new Set(MACRO_COUNTRIES))).map((x) => ({ ...x, keep: true })) }) },
   // Official rates (run by the second daily cron, ?group=rates, so each run stays inside the time limit)
   { id: "treasury-curve", name: "U.S. Treasury yield curve", group: "rates", run: async (now) => { const bills: Bills = {}; return { instruments: await treasuryCurve(now, 2, bills), aux: { bills } }; } },
   { id: "nyfed", name: "New York Fed SOFR and EFFR", group: "rates", run: async (now) => nyFed(now) },

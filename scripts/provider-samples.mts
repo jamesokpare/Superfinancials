@@ -31,6 +31,8 @@ import { cbnMoneyMarket, dmoAuctions } from "../src/lib/africa/ngdebt";
 import { calpers, oregon, wsib } from "../src/lib/pensions/index";
 import { eexEuaAuctions, embStats } from "../src/lib/macro/spreads";
 import { cbNoticeEvents } from "../src/lib/macro/cbnotices";
+import { carbAuctions, rggiAuctions } from "../src/lib/macro/carbon";
+import { damodaranCountryRisk } from "../src/lib/macro/countryrisk";
 
 for (const f of [".env.local", ".env"]) if (existsSync(f)) process.loadEnvFile(f);
 const only = process.argv.find((a) => a.startsWith("--only"))?.split("=")[1]?.split(",").map((s) => s.trim()).filter(Boolean);
@@ -129,6 +131,9 @@ const probes: Probe[] = [
   ["ishares", "emb-yield-duration", null, async () => embStats()],
   ["eex", "eua-auctions", null, async () => series(await eexEuaAuctions(new Date()))],
   ["central-banks", "meeting-notices", null, async () => { const r = await cbNoticeEvents(new Date(), new Set()); return { errors: r.errors, ...list(r.events.map((e) => ({ title: e.title, date: e.date, url: e.url }))) }; }],
+  ["rggi", "auction-results", null, async () => series(await rggiAuctions())],
+  ["carb", "auction-results", null, async () => series(await carbAuctions())],
+  ["damodaran", "country-risk", null, async () => series(await damodaranCountryRisk())],
   // International filings
   ["edinet", "documents", "EDINET_API_KEY", async () => list(await edinet(new Date(), 1))],
   ["opendart", "list", "OPENDART_API_KEY", async () => list(await openDart(new Date(), 2, 1))],
