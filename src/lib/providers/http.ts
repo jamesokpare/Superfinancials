@@ -58,12 +58,32 @@ export type FetchOptions = {
 const redact = (url: URL) =>
   url.toString().replace(/((?:api_?key|apikey|api_token|access_key|token)=)[^&]+/gi, "$1***").replace(/\/v6\/[^/]+\//, "/v6/***/");
 
+/** "www.mansaapi.com" and "mansaapi.com" are the same site. */
+const site = (host: string) => host.toLowerCase().replace(/^www\./, "");
+/**
+ * fetch, following redirects itself. fetch drops the Authorization header when a redirect changes host
+ * (e.g. www.example.com → example.com), so an API that redirects to its bare domain answers "no API key".
+ * A redirect within the same site (www or not, https only) keeps every header; any other redirect is
+ * followed without the Authorization header, as fetch would do, so a key never leaves the provider's site.
+ */
+export async function fetchKeepingAuth(url: URL | string, init: RequestInit = {}, hops = 5): Promise<Response> {
+  let cur = new URL(String(url)); let headers = new Headers(init.headers);
+  for (let i = 0; ; i++) {
+    const res = await fetch(cur, { ...init, headers, redirect: "manual" });
+    const loc = res.headers.get("location");
+    if (![301, 302, 303, 307, 308].includes(res.status) || !loc || i >= hops) return res;
+    const next = new URL(loc, cur);
+    if (site(next.hostname) !== site(cur.hostname) || next.protocol !== "https:") { headers = new Headers(headers); headers.delete("authorization"); }
+    cur = next;
+  }
+}
+
 export async function getJson<T>(provider: string, url: URL, opts: FetchOptions = {}): Promise<T> {
   const { init, timeoutMs = 15_000, inBodyError } = opts;
   const signal = init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
   let res: Response;
   try {
-    res = await fetch(url, { ...init, signal, headers: { accept: "application/json", ...init?.headers } });
+    res = await fetchKeepingAuth(url, { ...init, signal, headers: { accept: "application/json", ...init?.headers } });
   } catch (e) {
     const why = e instanceof Error && e.name === "TimeoutError" ? `timed out after ${timeoutMs} ms` : (e as Error).message;
     throw new ProviderError(provider, `request to ${redact(url)} failed: ${why}`);

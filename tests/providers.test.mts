@@ -15,6 +15,7 @@ import { createMarketstack } from "../src/lib/providers/marketstack";
 import { createMyStocksAfrica } from "../src/lib/providers/mystocks-africa";
 import { createNgxPulse } from "../src/lib/providers/ngx-pulse";
 import { CONNECTIONS, checkConnections } from "../src/lib/providers";
+import { getJson } from "../src/lib/providers/http";
 
 type Call = { url: URL; headers: Headers };
 let calls: Call[] = [];
@@ -96,5 +97,22 @@ const fmpRes = res.find((r) => r.id === "fmp");
 t("checkConnections skips unconfigured", res.filter((r) => r.configured).length === 1);
 t("checkConnections reports failure without leaking the key", fmpRes?.ok === false && !fmpRes.error?.includes("LEAKYKEY99"), fmpRes);
 
+// --- redirects keep the key within the provider's site only ------------------
+{
+  const realFetch = globalThis.fetch; const seen: [string, string | null][] = [];
+  globalThis.fetch = (async (u: string | URL | Request, init?: RequestInit) => {
+    const url = String(u instanceof Request ? u.url : u); seen.push([url, new Headers(init?.headers).get("authorization")]);
+    if (url.startsWith("https://www.mansaapi.com/")) return new Response("", { status: 308, headers: { location: url.replace("://www.", "://") } });
+    if (url.startsWith("https://mansaapi.com/api/v1/markets/exchanges")) return new Response(JSON.stringify({ success: true, data: [{ code: "nigeria" }] }), { headers: { "content-type": "application/json" } });
+    if (url.startsWith("https://evil.example/")) return new Response("{}", { headers: { "content-type": "application/json" } });
+    if (url.startsWith("https://mansaapi.com/away")) return new Response("", { status: 302, headers: { location: "https://evil.example/x" } });
+    return new Response("not found", { status: 404 });
+  }) as typeof fetch;
+  const r = await createMansa("mansa_live_sk_test").exchanges();
+  t("Mansa: www → bare-domain redirect keeps the Bearer key", (r as { success?: boolean }).success === true && seen[1]?.[0] === "https://mansaapi.com/api/v1/markets/exchanges" && seen[1]?.[1] === "Bearer mansa_live_sk_test", seen);
+  seen.length = 0; await getJson("x", new URL("https://mansaapi.com/away"), { init: { headers: { authorization: "Bearer k" } } });
+  t("a redirect to another site drops the key", seen[1]?.[0] === "https://evil.example/x" && seen[1]?.[1] === null, seen);
+  globalThis.fetch = realFetch;
+}
 console.log(fails ? `\n${fails} provider test(s) failed` : "\nAll provider tests passed");
 process.exit(fails ? 1 : 0);
