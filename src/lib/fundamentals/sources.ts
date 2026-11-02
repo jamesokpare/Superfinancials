@@ -56,6 +56,8 @@ export type FundDoc = {
 };
 
 /** Sorts by report date, keeps the last 12 past reports and the first upcoming one. */
+/** The sync's run date ("today" for next-report and as-of stamps); set by runFundamentalsSync, so a run dated in the past reads the same. */
+export const fundClock = { now: () => new Date() };
 export function tidyEarn(rows: EarnRow[], today: string): EarnRow[] {
   const by = new Map<string, EarnRow>();
   for (const r of rows) if (r.d) { const o = by.get(r.d); by.set(r.d, o ? { ...o, ...Object.fromEntries(Object.entries(r).filter(([, v]) => v !== null)) } as EarnRow : r); }
@@ -105,7 +107,7 @@ export async function eodhdFundamentals(id: string, tk: string, exch = "US"): Pr
   const q4 = cfQ.slice(0, 4).map(({ r }) => fcfOf(r, "freeCashFlow", "totalCashFromOperatingActivities", "capitalExpenditures"));
   const rev = num(H.RevenueTTM);
   // Next report: the earliest future entry in the earnings history.
-  const today = new Date().toISOString().slice(0, 10);
+  const today = fundClock.now().toISOString().slice(0, 10);
   const next = byDate(E.History).map(({ r }) => r).filter((r) => (day(r.reportDate) ?? "") >= today).sort((a, b) => (String(a.reportDate) < String(b.reportDate) ? -1 : 1))[0];
   const earn = tidyEarn(byDate(E.History).map(({ d: p, r }) => ({
     d: day(r.reportDate) ?? "", p, time: timing(r.beforeAfterMarket), eps: num(r.epsActual), est: num(r.epsEstimate), rev: null, revEst: null,
@@ -114,7 +116,7 @@ export async function eodhdFundamentals(id: string, tk: string, exch = "US"): Pr
   const earnTrend: EarnTrend | null = tq ? { p: tq.p, now: num(tq.r.epsTrendCurrent), d7: num(tq.r.epsTrend7daysAgo), d30: num(tq.r.epsTrend30daysAgo), d90: num(tq.r.epsTrend90daysAgo), revEst: num(tq.r.revenueEstimateAvg) } : null;
   if (earnTrend && earn.length && earn.at(-1)!.eps === null && earn.at(-1)!.revEst === null) earn[earn.length - 1] = { ...earn.at(-1)!, revEst: earnTrend.revEst };
   return {
-    type: "fund", id, tk, src: "eodhd", earn, earnTrend, asOf: new Date().toISOString(), ccy: String(G.CurrencyCode || "USD"), name: G.Name ? String(G.Name) : undefined, shares,
+    type: "fund", id, tk, src: "eodhd", earn, earnTrend, asOf: fundClock.now().toISOString(), ccy: String(G.CurrencyCode || "USD"), name: G.Name ? String(G.Name) : undefined, shares,
     ttm: { basis: "TTM", rev, gp: num(H.GrossProfitTTM), op: rev !== null && num(H.OperatingMarginTTM) !== null ? rev * num(H.OperatingMarginTTM)! : null,
       ni: rev !== null && num(H.ProfitMargin) !== null ? rev * num(H.ProfitMargin)! : null, ebitda: num(H.EBITDA), eps: num(H.DilutedEpsTTM) ?? num(H.EarningsShare),
       fcf: q4.length === 4 ? sum(...q4) : fy.at(-1)?.fcf ?? null, divPs: num(H.DividendShare) ?? 0 },
@@ -145,12 +147,12 @@ export async function fmpFundamentals(id: string, tk: string): Promise<FundDoc |
   const T = ttmRows[0]; const L = inc[0]; const src = T ?? L; const lastFy = fy.at(-1)!;
   const price = num(P.price); const mcap = num(P.marketCap);
   const shares = price && mcap ? mcap / price : num(L.weightedAverageShsOutDil);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = fundClock.now().toISOString().slice(0, 10);
   const nextRow = earn_.filter((r) => (day(r.date) ?? "") >= today && num(r.epsActual) === null).sort((a, b) => (String(a.date) < String(b.date) ? -1 : 1))[0];
   const fwd = est.filter((r) => (day(r.date) ?? "") > lastFy.end).sort((a, b) => (String(a.date) < String(b.date) ? -1 : 1))[0];
   const earn = tidyEarn(earn_.map((r) => ({ d: day(r.date) ?? "", p: null, time: null, eps: num(r.epsActual), est: num(r.epsEstimated), rev: num(r.revenueActual), revEst: num(r.revenueEstimated) })), today);
   return {
-    type: "fund", id, tk, src: "fmp", earn, earnTrend: null, asOf: new Date().toISOString(), ccy: String(L.reportedCurrency || P.currency || "USD"), name: P.companyName ? String(P.companyName) : undefined, shares,
+    type: "fund", id, tk, src: "fmp", earn, earnTrend: null, asOf: fundClock.now().toISOString(), ccy: String(L.reportedCurrency || P.currency || "USD"), name: P.companyName ? String(P.companyName) : undefined, shares,
     ttm: { basis: T ? "TTM" : "FY", rev: num(src.revenue), gp: num(src.grossProfit), op: num(src.operatingIncome), ni: num(src.netIncome), ebitda: num(src.ebitda),
       eps: num(src.epsDiluted) ?? num(src.epsdiluted) ?? num(src.eps), fcf: lastFy.fcf, divPs: num(P.lastDividend) ?? 0 },
     bs: { date: day(bal[0]?.date), equity: num(bal[0]?.totalStockholdersEquity), debt: num(bal[0]?.totalDebt), cash: num(bal[0]?.cashAndShortTermInvestments) ?? num(bal[0]?.cashAndCashEquivalents) },
@@ -179,9 +181,9 @@ export async function alphaVantageFundamentals(id: string, tk: string): Promise<
       assets: num(b.totalAssets), debt: num(b.shortLongTermDebtTotal), equity: num(b.totalShareholderEquity), fcf: fcfOf(c, "freeCashFlow", "operatingCashflow", "capitalExpenditures") };
   }).reverse();
   const rev = num(ov.RevenueTTM); const pm = num(ov.ProfitMargin); const om = num(ov.OperatingMarginTTM);
-  const earn = tidyEarn(qtr.map((r) => ({ d: day(r.reportedDate) ?? "", p: day(r.fiscalDateEnding), time: timing(r.reportTime), eps: num(r.reportedEPS), est: num(r.estimatedEPS), rev: null, revEst: null })), new Date().toISOString().slice(0, 10));
+  const earn = tidyEarn(qtr.map((r) => ({ d: day(r.reportedDate) ?? "", p: day(r.fiscalDateEnding), time: timing(r.reportTime), eps: num(r.reportedEPS), est: num(r.estimatedEPS), rev: null, revEst: null })), fundClock.now().toISOString().slice(0, 10));
   return {
-    type: "fund", id, tk, src: "alphavantage", earn, earnTrend: null, asOf: new Date().toISOString(), ccy: String(ov.Currency || "USD"), name: ov.Name ? String(ov.Name) : undefined, shares: num(ov.SharesOutstanding),
+    type: "fund", id, tk, src: "alphavantage", earn, earnTrend: null, asOf: fundClock.now().toISOString(), ccy: String(ov.Currency || "USD"), name: ov.Name ? String(ov.Name) : undefined, shares: num(ov.SharesOutstanding),
     ttm: { basis: "TTM", rev, gp: num(ov.GrossProfitTTM), op: rev !== null && om !== null ? rev * om : null, ni: rev !== null && pm !== null ? rev * pm : null, ebitda: num(ov.EBITDA),
       eps: num(ov.DilutedEPSTTM) ?? num(ov.EPS), fcf: fy.at(-1)?.fcf ?? null, divPs: num(ov.DividendPerShare) ?? 0 },
     bs: { date: bal[0] ? String(bal[0].fiscalDateEnding) : null, equity: num(bal[0]?.totalShareholderEquity), debt: num(bal[0]?.shortLongTermDebtTotal), cash: num(bal[0]?.cashAndShortTermInvestments) },
