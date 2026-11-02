@@ -17,7 +17,7 @@ import { scrub } from "@/lib/providers";
 import { US_EQUITIES } from "@/lib/market/instruments";
 import { openStore, type Doc, type DocStore } from "@/lib/market/store";
 import {
-  alphaVantageFundamentals, eodhdEarningsCalendar, eodhdFundamentals, fmpEarningsCalendar, fmpFundamentals, tidyEarn,
+  alphaVantageFundamentals, fundClock, eodhdEarningsCalendar, eodhdFundamentals, fmpEarningsCalendar, fmpFundamentals, tidyEarn,
   type FundDoc, type FundProvider,
 } from "./sources";
 import { africanFundamentals } from "./africa";
@@ -70,6 +70,7 @@ const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
 
 export async function runFundamentalsSync(opts: FundSyncOptions = {}): Promise<FundSyncReport> {
   const now = opts.now ?? new Date(); const nowMs = now.getTime();
+  fundClock.now = () => new Date(now.getTime());
   const budget = opts.budget ?? intEnv("FUND_BUDGET", 10); const refreshDays = opts.refreshDays ?? intEnv("FUND_REFRESH_DAYS", 7);
   const configured = (opts.providers ?? (Object.keys(ENVS) as FundProvider[]).filter((p) => envKey(ENVS[p])));
   let avLeft = opts.alphaVantageCompanies ?? 1;

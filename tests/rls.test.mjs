@@ -63,6 +63,9 @@ await t("user cannot rename other", await as(B, n(`update profiles set name='X' 
 await t("B writes own public key", await as(B, n(`insert into docs(path,parent,id,data) values ('pk/${B}','pk','${B}','{"x":"1"}')`)), 1);
 await t("B cannot write A public key", (await as(B, rows(`insert into docs(path,parent,id,data) values ('pk/${A}','pk','${A}','{}')`))).startsWith("ERR"), true);
 await t("signed-in reads public keys", await as(A, rows("select path from docs where parent='pk'")), [{ path: `pk/${B}` }]);
+await t("B writes own AI usage and audit chain", await as(B, n(`insert into docs(path,parent,id,data) values ('aiu/${B}','aiu','${B}','{"tok":1}'), ('auditm/${B}/c/h1','auditm/${B}/c','h1','{}')`)), 2);
+await t("B cannot write A's audit witness", (await as(B, rows(`insert into docs(path,parent,id,data) values ('auditw/${A}/m/x','auditw/${A}/m','x','{}')`))).startsWith("ERR"), true);
+await t("signed-out cannot read AI usage", await as(null, rows("select path from docs where parent='aiu'")), []);
 await t("anon cannot read public keys", await as(null, rows("select path from docs where parent='pk'")), []);
 await t("admin adds a registry company", await as(A, n(`insert into docs(path,parent,id,data) values ('adm_reg/ng-rc123','adm_reg','ng-rc123','{"name":"X"}')`)), 1);
 await t("non-admin cannot add a registry company", (await as(B, rows(`insert into docs(path,parent,id,data) values ('adm_reg/ng-rc999','adm_reg','ng-rc999','{}')`))).startsWith("ERR"), true);
